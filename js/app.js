@@ -44,6 +44,11 @@ let yaImprimio = false;
 let codigoPreCargado = null;
 let fotoEstudianteBase64 = null;
 let streamFoto = null;
+let registros = [];
+let registrosVisibles = [];
+let claveEliminarPendiente = null;
+let editandoKey = null;
+let editandoOriginal = null;
 
 /* ---------- Nómina de alumnos 2026 (autocompletar comuna de estudiantes antiguos) ---------- */
 let nomina2026 = null;
@@ -776,11 +781,6 @@ ${NOMBRE_COLEGIO} · ${CONTACTO_COLEGIO.direccion}`;
 }
 
 /* ---------- Panel admin ---------- */
-let registros = [];
-let registrosVisibles = [];
-let claveEliminarPendiente = null;
-let editandoKey = null;
-let editandoOriginal = null;
 function pedirClaveAdmin(){ document.getElementById("inputClave").value=""; abrir("ovClave"); setTimeout(()=>document.getElementById("inputClave").focus(),100); }
 document.getElementById("inputClave").addEventListener("keydown",e=>{ if(e.key==="Enter") validarClave(); });
 function validarClave(){
