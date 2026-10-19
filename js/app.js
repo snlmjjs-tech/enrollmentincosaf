@@ -3,15 +3,23 @@
    ========================================================== */
 const NOMBRE_COLEGIO = "Instituto Comercial Alberto Valenzuela Llanos de San Fernando";
 const CONTACTO_COLEGIO = { correo: "lissette.maldonado@slepcolchagua.cl", telefono: "72 2847263", direccion: "Av. Manso de Velasco 389, San Fernando" };
+const CLAVE_ADMIN = "incosaf2027"; // 🔑 cámbiala por la que quieras
 const LOGO_SRC = document.querySelector(".logo-header").src; // reutiliza el mismo logo del encabezado en los documentos impresos
 // jsPDF necesita el logo como imagen ya cargada: se prepara una vez al iniciar
 const LOGO_IMG = new Image();
 LOGO_IMG.src = LOGO_SRC;
 
-// 1) Supabase: pega aquí la URL y la clave PÚBLICA (anon) de TU proyecto
-//    (Supabase → Project Settings → API). Nunca pegues aquí la clave service_role.
-const SUPABASE_URL = "PEGA_AQUI_TU_URL_DE_SUPABASE";
-const SUPABASE_ANON_KEY = "PEGA_AQUI_TU_CLAVE_ANON";
+// 1) Firebase: pega aquí la configuración de TU proyecto
+//    (Consola Firebase → Configuración del proyecto → Tus apps → SDK)
+const firebaseConfig = {
+  apiKey: "AIzaSyC3BboH372-0w_61AeF6pDaCEH_QRHPcao",
+  authDomain: "matricula-incosaf-2027.firebaseapp.com",
+  databaseURL: "https://matricula-incosaf-2027-default-rtdb.firebaseio.com",
+  projectId: "matricula-incosaf-2027",
+  storageBucket: "matricula-incosaf-2027.firebasestorage.app",
+  messagingSenderId: "788236687215",
+  appId: "1:788236687215:web:18336c9efffb417164fa9a"
+};
 
 // 2) Envío automático del comprobante al apoderado (Google Apps Script + Gmail, gratis)
 //    Crea un proyecto en script.google.com, pega el código del script, despliega como
@@ -20,24 +28,13 @@ const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzFw8rbYDDGh9ZD
 const APPS_SCRIPT_SECRETO = "ZZWBOa92quuP2qK3la7vVYhc";
 /* ========================================================== */
 
-let sb = null;
+let db = null;
 try {
-  if (!SUPABASE_URL.includes("PEGA_AQUI")) sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-} catch(e){ console.error("Supabase:", e); }
-
-// Los errores de supabase-js llegan como objeto {error}; los convertimos en excepciones normales
-function ok(res){ if (res.error) throw new Error(res.error.message); return res.data; }
-function requiereDb(){ if (!sb) throw new Error("Supabase no está configurado. Pega la URL y la clave anon al inicio del archivo."); }
-
-// Una matrícula se guarda con la foto en una columna aparte, para que el panel no la descargue en cada lista
-function filaDesdeFicha(f){
-  const { foto, ...est } = f.estudiante;
-  return { tipo: f.tipo, estudiante: est, apoderado: f.apoderado, suplente: f.suplente || null, foto: foto || null };
-}
-function fichaDesdeFila(r){
-  return { _key: r.id, folio: String(r.folio), fechaRegistro: r.fecha_registro, tipo: r.tipo,
-    estudiante: r.estudiante || {}, apoderado: r.apoderado || {}, suplente: r.suplente || null };
-}
+  if (!firebaseConfig.apiKey.includes("PEGA_AQUI")) {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.database();
+  }
+} catch(e){ console.error("Firebase:", e); }
 
 const correoListo = !APPS_SCRIPT_URL.includes("PEGA_AQUI");
 
@@ -50,20 +47,13 @@ let streamFoto = null;
 
 /* ---------- Nómina de alumnos 2026 (autocompletar comuna de estudiantes antiguos) ---------- */
 let nomina2026 = null;
-async function cargarNomina(){
-  if (!sb || nomina2026) return;
-  try{
-    const filas = [];
-    for (let desde=0; ; desde+=1000){
-      const lote = ok(await sb.from("nomina").select("rut,nombre,curso,edad,comuna,estado").range(desde, desde+999));
-      filas.push(...lote);
-      if (lote.length < 1000) break;
-    }
-    nomina2026 = {};
-    filas.forEach(a => { nomina2026[a.rut] = { nombre:a.nombre, curso:a.curso||"", edad:a.edad||"", comuna:a.comuna||"", estado:a.estado||"" }; });
-    document.getElementById("listaNomina2026").innerHTML = filas.map(a => `<option value="${a.nombre}">`).join("");
-  }catch(err){ console.error("Nómina 2026:", err); }
-}
+fetch("nomina2026.json").then(r => r.ok ? r.json() : null).then(datos => {
+  if (!datos) return;
+  nomina2026 = datos;
+  const dl = document.getElementById("listaNomina2026");
+  const opciones = Object.values(datos).map(a => `<option value="${a.nombre}">`).join("");
+  dl.innerHTML = opciones;
+}).catch(err => console.error("Nómina 2026:", err));
 
 function buscarEnNomina(){
   if (tipoEstudiante !== "antiguo" || !nomina2026) return;
@@ -100,34 +90,10 @@ if (MODO_APODERADO){
   document.addEventListener("DOMContentLoaded", ()=>{
     document.querySelector(".pre-row").style.display = "none";
     document.querySelector(".admin-link").style.display = "none";
-    document.getElementById("btnSalir").style.display = "none";
     document.querySelector('#ficha button[type="submit"]').textContent = "Enviar pre-matrícula →";
     document.querySelector("header.app .brand p").textContent = "San Fernando · Pre-matrícula del apoderado";
   });
 }
-
-/* ---------- Sesión del personal ---------- */
-function mostrarLogin(){ nomina2026 = null; mostrar("scr-login"); }
-async function iniciarApp(){
-  if (MODO_APODERADO){ mostrar("scr-home"); return; }
-  if (!sb){ mostrar("scr-login"); document.getElementById("loginError").textContent = "Supabase no está configurado."; return; }
-  sb.auth.onAuthStateChange(ev => { if (ev === "SIGNED_OUT") mostrarLogin(); });
-  const { data } = await sb.auth.getSession();
-  if (data.session){ cargarNomina(); mostrar("scr-home"); } else mostrar("scr-login");
-}
-document.getElementById("formLogin").addEventListener("submit", async e=>{
-  e.preventDefault();
-  const btn = document.getElementById("btnLogin"), err = document.getElementById("loginError");
-  err.textContent = ""; btn.disabled = true; btn.textContent = "Entrando…";
-  try{
-    requiereDb();
-    ok(await sb.auth.signInWithPassword({ email: document.getElementById("loginCorreo").value.trim(), password: document.getElementById("loginClave").value }));
-    document.getElementById("loginClave").value = "";
-    cargarNomina(); mostrar("scr-home");
-  }catch(ex){ err.textContent = "No se pudo iniciar sesión: correo o contraseña incorrectos."; }
-  finally{ btn.disabled = false; btn.textContent = "Entrar"; }
-});
-async function cerrarSesion(){ if (sb) await sb.auth.signOut(); registros = []; mostrarLogin(); }
 
 /* ---------- Navegación ---------- */
 function mostrar(id){
@@ -143,6 +109,7 @@ function iniciarFicha(tipo){
   tipoEstudiante = tipo;
   codigoPreCargado = null;
   editandoKey = null;
+  editandoOriginal = null;
   fotoEstudianteBase64 = null;
   document.getElementById("ficha").reset();
   actualizarMiniaturaFoto();
@@ -376,11 +343,12 @@ document.getElementById("ficha").addEventListener("submit", async e=>{
     const btnGuardar = e.target.querySelector('button[type="submit"]');
     btnGuardar.disabled = true; btnGuardar.textContent = "Guardando…";
     try{
-      requiereDb();
-      ok(await sb.from("matriculas").update(filaDesdeFicha(datos)).eq("id", editandoKey));
+      if (!db) throw new Error("Firebase no está configurado.");
+      await db.ref("matriculas2027/"+editandoKey).set({ ...editandoOriginal, ...datos });
       aviso("Cambios guardados", "Se actualizaron los datos de la matrícula.");
       editandoKey = null;
-          cargarAdmin();
+      editandoOriginal = null;
+      cargarAdmin();
     }catch(err){
       aviso("No se pudo guardar", err.message);
     }finally{
@@ -400,12 +368,14 @@ document.getElementById("ficha").addEventListener("submit", async e=>{
   btnGenerar.disabled = true; btnGenerar.textContent = "Generando ficha…";
   let numeroFolio = null;
   try{
-    requiereDb();
-    numeroFolio = String(ok(await sb.rpc("siguiente_folio")));
+    if (!db) throw new Error("Firebase no está configurado.");
+    const res = await db.ref("contadorFolio2027").transaction(actual => (actual||0)+1);
+    if (res.committed) numeroFolio = String(res.snapshot.val());
+    else throw new Error("La transacción del contador no se completó.");
   }catch(err){
     console.error("Folio:", err);
     aviso("No se pudo generar el número de ficha",
-      "No se pudo obtener el siguiente número de ficha. Verifica que hayas iniciado sesión y que el script SQL de Supabase esté instalado.<br><br>Detalle técnico: " + err.message);
+      "Firebase rechazó la escritura del contador de folios.<br><br><b>Causa más común:</b> las reglas de la base de datos no permiten escribir en <code>contadorFolio2027</code>. Actualiza las reglas en la consola de Firebase.<br><br>Detalle técnico: " + err.message);
   }
   btnGenerar.disabled = false; btnGenerar.textContent = "Generar documentos de matrícula →";
   if (!numeroFolio) return; // no continuar sin folio válido
@@ -420,8 +390,18 @@ document.getElementById("ficha").addEventListener("submit", async e=>{
 async function guardarPrematricula(datos, btn){
   btn.disabled = true; btn.textContent = "Enviando…";
   try{
-    requiereDb();
-    const codigo = ok(await sb.rpc("crear_prematricula", { datos }));
+    if (!db) throw new Error("No hay conexión con la base de datos.");
+    // Generar código único de 4 dígitos
+    let codigo = null;
+    for (let i=0; i<25; i++){
+      const cand = String(Math.floor(1000 + Math.random()*9000));
+      const existe = await db.ref("prematriculas2027/"+cand).get();
+      if (!existe.exists()){ codigo = cand; break; }
+    }
+    if (!codigo) throw new Error("No se pudo generar un código disponible. Intenta de nuevo.");
+    await db.ref("prematriculas2027/"+codigo).set({
+      codigo, creada: new Date().toLocaleString("es-CL"), datos
+    });
     document.getElementById("codigoGrande").textContent = codigo;
     mostrar("scr-codigo");
   }catch(err){
@@ -444,11 +424,11 @@ async function cargarPrematricula(){
   const btn = document.getElementById("btnBuscarCodigo");
   btn.disabled = true; btn.textContent = "Buscando…";
   try{
-    requiereDb();
-    const fila = ok(await sb.from("prematriculas").select("datos").eq("codigo", codigo).maybeSingle());
-    if (!fila){ aviso("Código no encontrado","No existe una pre-matrícula con el código <b>"+codigo+"</b>. Verifica con el apoderado."); return; }
+    if (!db) throw new Error("Firebase no está configurado.");
+    const snap = await db.ref("prematriculas2027/"+codigo).get();
+    if (!snap.exists()){ aviso("Código no encontrado","No existe una pre-matrícula con el código <b>"+codigo+"</b>. Verifica con el apoderado."); return; }
     cerrar("ovCodigo");
-    llenarFicha(fila.datos);
+    llenarFicha(snap.val().datos);
     codigoPreCargado = codigo;
   }catch(err){
     aviso("Error al buscar", err.message);
@@ -493,17 +473,15 @@ function llenarFicha(d, mensaje){
   aviso("Datos cargados", mensaje || "Se cargaron los datos de la pre-matrícula. Revísalos junto al apoderado antes de generar los documentos.");
 }
 
-async function editarMatricula(key){
+function editarMatricula(key){
   const r = registros.find(x => x._key === key);
   if (!r) return;
-  let foto = "";
-  try{ foto = ok(await sb.from("matriculas").select("foto").eq("id", key).single()).foto || ""; }
-  catch(err){ console.error("Foto:", err); }
   llenarFicha(
-    { tipo: r.tipo, estudiante: { ...r.estudiante, foto }, apoderado: r.apoderado, suplente: r.suplente },
+    { tipo: r.tipo, estudiante: r.estudiante, apoderado: r.apoderado, suplente: r.suplente },
     "Se cargaron los datos de esta matrícula para editar. Corrige lo necesario y presiona «Guardar cambios»."
   );
   editandoKey = key;
+  editandoOriginal = { folio: r.folio, fechaRegistro: r.fechaRegistro };
   document.querySelector('#ficha button[type="submit"]').textContent = "Guardar cambios ✓";
 }
 
@@ -718,12 +696,12 @@ async function finalizarMatricula(){
   const btn = document.getElementById("btnFinalizar");
   btn.disabled = true; btn.textContent = "Guardando…";
   try{
-    requiereDb();
-    ok(await sb.from("matriculas").insert({ folio: Number(fichaActual.folio), fecha_registro: fichaActual.fechaRegistro, ...filaDesdeFicha(fichaActual) }));
+    if (!db) throw new Error("Firebase no está configurado. Pega la configuración de tu proyecto al inicio del archivo.");
+    await db.ref("matriculas2027").push(fichaActual);
 
     // Si venía de una pre-matrícula, eliminarla (el código ya se usó)
     if (codigoPreCargado){
-      try{ ok(await sb.from("prematriculas").delete().eq("codigo", codigoPreCargado)); }catch(e){ console.error(e); }
+      try{ await db.ref("prematriculas2027/"+codigoPreCargado).remove(); }catch(e){ console.error(e); }
       codigoPreCargado = null;
     }
 
@@ -802,18 +780,36 @@ let registros = [];
 let registrosVisibles = [];
 let claveEliminarPendiente = null;
 let editandoKey = null;
+let editandoOriginal = null;
+function pedirClaveAdmin(){ document.getElementById("inputClave").value=""; abrir("ovClave"); setTimeout(()=>document.getElementById("inputClave").focus(),100); }
+document.getElementById("inputClave").addEventListener("keydown",e=>{ if(e.key==="Enter") validarClave(); });
+function validarClave(){
+  if (document.getElementById("inputClave").value !== CLAVE_ADMIN){
+    aviso("Clave incorrecta","La clave ingresada no es válida."); return;
+  }
+  cerrar("ovClave");
+  cargarAdmin();
+}
 async function cargarAdmin(){
   mostrar("scr-admin");
   const tb = document.getElementById("tbodyAdmin");
-  if (!sb){ tb.innerHTML = `<tr><td colspan="9">Supabase no está configurado.</td></tr>`; return; }
+  if (!db){ tb.innerHTML = `<tr><td colspan="9">Firebase no está configurado.</td></tr>`; return; }
   tb.innerHTML = `<tr><td colspan="9">Cargando…</td></tr>`;
   try{
+    const snap = await db.ref("matriculas2027").get();
     registros = [];
-    for (let desde=0; ; desde+=1000){
-      const lote = ok(await sb.from("matriculas").select("id,folio,fecha_registro,tipo,estudiante,apoderado,suplente").order("folio").range(desde, desde+999));
-      lote.forEach(r => registros.push(fichaDesdeFila(r)));
-      if (lote.length < 1000) break;
-    }
+    snap.forEach(ch=>{
+      const val = ch.val() || {};
+      registros.push({
+        _key: ch.key,
+        folio: val.folio ?? "—",
+        fechaRegistro: val.fechaRegistro ?? "—",
+        tipo: val.tipo ?? "nuevo",
+        estudiante: val.estudiante ?? {},
+        apoderado: val.apoderado ?? {},
+        suplente: val.suplente ?? null
+      });
+    });
     // Orden ascendente 1, 2, 3... por folio (numérico si es posible, si no por fecha de registro)
     registros.sort((a,b)=>{
       const na = Number(a.folio), nb = Number(b.folio);
@@ -910,7 +906,7 @@ async function eliminarMatricula(){
   const btn = document.getElementById("btnConfirmarEliminar");
   btn.disabled = true; btn.textContent = "Eliminando…";
   try{
-    ok(await sb.from("matriculas").delete().eq("id", claveEliminarPendiente));
+    await db.ref("matriculas2027/" + claveEliminarPendiente).remove();
     cerrar("ovEliminar");
     cargarAdmin();
   }catch(err){
@@ -983,4 +979,3 @@ function descargarExcelLibro(){
   XLSX.utils.book_append_sheet(wb, ws, "Nómina 2027");
   XLSX.writeFile(wb, "Nomina_INCOSAF_2027_libro_digital.xlsx");
 }
-iniciarApp();
