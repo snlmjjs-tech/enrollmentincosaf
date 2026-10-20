@@ -85,6 +85,9 @@ header.app{position:sticky;top:12px;z-index:30;padding:0 16px;margin-top:12px}
 #scr-home.active .pre-row{animation-delay:.24s}
 #scr-home.active .admin-link{animation-delay:.32s}
 
+.acceso-form{max-width:380px;margin:22px auto 0;display:grid;gap:12px}
+#btnSalir{margin-top:2px}
+
 /* ---------- Formulario ---------- */
 .stepper{display:flex;gap:8px;margin:22px 0 18px;flex-wrap:wrap}
 .step{flex:1;min-width:130px;background:var(--superficie);border:1px solid var(--linea);border-radius:20px;padding:10px 16px;font-size:.75rem;color:var(--gris);box-shadow:var(--sombra-s);transition:.3s var(--suave)}

@@ -23,7 +23,14 @@ Es un sitio estático: sírvelo con cualquier servidor (`python3 -m http.server`
 4. Si ya tenías fichas numeradas (por ejemplo hasta la 120), ejecuta `select setval('public.folio_2027_seq', 120);` para que el folio continúe.
 
 Cómo queda protegida la información: el navegador no puede leer ni escribir las tablas directamente. Solo puede llamar a funciones:
-- **Abiertas** (sirven para registrar): pedir folio, guardar una matrícula, crear/cargar/eliminar pre-matrículas por código.
-- **Con clave de encargados** (se valida en el servidor, guardada con hash): listar, editar y eliminar matrículas, y por tanto el panel y las descargas de Excel.
+- **Abierta**: crear una pre-matrícula (la usan los apoderados por QR).
+- **Con clave interna**: pedir folio, guardar una matrícula, cargar y eliminar pre-matrículas por código.
+- **Con clave de encargados**: listar, editar y eliminar matrículas, cambiar folios, y por tanto el panel y las descargas de Excel.
 
-Para cambiar la clave: `update public.config set clave_hash = extensions.crypt('NUEVA_CLAVE', extensions.gen_salt('bf')) where id;`
+Hay **dos claves**, ambas guardadas con hash en el servidor:
+- **Clave interna** (inspectores y profesores): se pide al abrir la página y permite registrar matrículas. Los apoderados que entran por el QR (`?apoderado`) no la necesitan y solo pueden enviar una pre-matrícula.
+- **Clave de encargados**: da acceso al panel (ver, editar y eliminar matrículas, Excel, folios). También sirve para entrar a la página.
+
+Definir o cambiar la clave interna: `update public.config set clave_interna_hash = extensions.crypt('TU_CLAVE_INTERNA', extensions.gen_salt('bf')) where id;`
+
+Para cambiar la clave de encargados: `update public.config set clave_hash = extensions.crypt('NUEVA_CLAVE', extensions.gen_salt('bf')) where id;`
