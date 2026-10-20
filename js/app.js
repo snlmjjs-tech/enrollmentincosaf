@@ -35,6 +35,8 @@ async function rpc(nombre, args){
   const { data, error } = await sb.rpc(nombre, args || {});
   if (error) {
     if (/clave_incorrecta/.test(error.message)) throw new Error("La clave de encargados no es válida o cambió. Vuelve a ingresarla.");
+    const m = /(folio_invalido|folio_en_uso|folio_duplicado): (.*)/.exec(error.message);
+    if (m) throw new Error(m[2]);
     throw new Error(error.message);
   }
   return data;
@@ -881,6 +883,7 @@ function renderTablaAdmin(lista){
         <td>${r.tipo==="antiguo" ? (r.estudiante.cursoMatricula ?? r.estudiante.cursoAnterior ?? "—") : (r.estudiante.procedencia ?? "—")}</td>
         <td>${r.apoderado.nombre ?? "—"}</td><td>${r.apoderado.celular ?? "—"}</td>
         <td style="white-space:nowrap">
+          <button class="btn-del" title="Cambiar N° de ficha" onclick="abrirFolioFicha('${r._key}')">#</button>
           <button class="btn-del" title="Editar matrícula" onclick="editarMatricula('${r._key}')">✏️</button>
           <button class="btn-del" title="Eliminar matrícula" onclick="confirmarEliminar('${r._key}','${(r.estudiante.nombre ?? "este estudiante").replace(/'/g,"\\'")}')">🗑️</button>
         </td>
@@ -969,4 +972,55 @@ function descargarExcelLibro(){
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Nómina 2027");
   XLSX.writeFile(wb, "Nomina_INCOSAF_2027_libro_digital.xlsx");
+}
+
+/* ---------- Folios: contador y N° de ficha ---------- */
+async function abrirContadorFolio(){
+  const inp = document.getElementById("inputSiguienteFolio");
+  inp.value = "";
+  abrir("ovContadorFolio");
+  try{ inp.value = await rpc("ver_siguiente_folio", { p_clave: claveAdmin }); }
+  catch(err){ cerrar("ovContadorFolio"); aviso("No se pudo leer el contador", err.message); return; }
+  inp.focus(); inp.select();
+}
+async function guardarContadorFolio(){
+  const valor = parseInt(document.getElementById("inputSiguienteFolio").value, 10);
+  if (!Number.isInteger(valor) || valor < 1){ aviso("Número inválido","Escribe un número entero de 1 o más."); return; }
+  const btn = document.getElementById("btnGuardarContador");
+  btn.disabled = true; btn.textContent = "Guardando…";
+  try{
+    await rpc("establecer_siguiente_folio", { p_clave: claveAdmin, p_valor: valor });
+    cerrar("ovContadorFolio");
+    aviso("Contador actualizado", "La próxima ficha que se genere será la <b>N° " + valor + "</b>.");
+  }catch(err){
+    aviso("No se pudo cambiar el contador", err.message);
+  }finally{
+    btn.disabled = false; btn.textContent = "Guardar";
+  }
+}
+
+let folioFichaKey = null;
+function abrirFolioFicha(key){
+  const r = registros.find(x => x._key === key);
+  if (!r) return;
+  folioFichaKey = key;
+  document.getElementById("nombreFolioFicha").textContent = r.estudiante.nombre || "este estudiante";
+  document.getElementById("inputFolioFicha").value = r.folio;
+  abrir("ovFolioFicha");
+  setTimeout(()=>{ const i = document.getElementById("inputFolioFicha"); i.focus(); i.select(); }, 100);
+}
+async function guardarFolioFicha(){
+  const valor = parseInt(document.getElementById("inputFolioFicha").value, 10);
+  if (!Number.isInteger(valor) || valor < 1){ aviso("Número inválido","Escribe un número entero de 1 o más."); return; }
+  const btn = document.getElementById("btnGuardarFolioFicha");
+  btn.disabled = true; btn.textContent = "Guardando…";
+  try{
+    await rpc("cambiar_folio_matricula", { p_clave: claveAdmin, p_id: folioFichaKey, p_folio: valor });
+    cerrar("ovFolioFicha");
+    cargarAdmin();
+  }catch(err){
+    aviso("No se pudo cambiar el N° de ficha", err.message);
+  }finally{
+    btn.disabled = false; btn.textContent = "Guardar";
+  }
 }

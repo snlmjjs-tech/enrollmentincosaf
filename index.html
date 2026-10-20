@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<link rel="stylesheet" href="css/styles.css?v=20261019">
+<link rel="stylesheet" href="css/styles.css?v=20261020">
 </head>
 <body>
 
@@ -308,6 +308,7 @@
         <button class="btn btn-ghost" onclick="volverInicio()">← Inicio</button>
         <button class="btn btn-gold" id="btnDescargarExcel" onclick="descargarExcel()">⬇️ Descargar Excel</button>
         <button class="btn btn-ghost" onclick="descargarExcelLibro()">📘 Excel formato libro digital</button>
+        <button class="btn btn-ghost" onclick="abrirContadorFolio()">🔢 Contador de folio</button>
       </div>
     </div>
     <div class="admin-filtros">
@@ -401,6 +402,30 @@
   </div>
 </div>
 
+<div class="overlay" id="ovContadorFolio">
+  <div class="modal">
+    <h3>Contador de folio</h3>
+    <p>Define el número de la <b>próxima ficha</b> que se genere. Por ejemplo, escribe 1 para empezar de nuevo. No puede ser menor o igual al de una ficha ya guardada: para eso, elimina esas matrículas primero o cambia su número.</p>
+    <input type="number" id="inputSiguienteFolio" min="1" step="1" style="text-align:center;font-size:1.5rem">
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="cerrar('ovContadorFolio')">Cancelar</button>
+      <button class="btn btn-pri" id="btnGuardarContador" onclick="guardarContadorFolio()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="ovFolioFicha">
+  <div class="modal">
+    <h3>Cambiar N° de ficha</h3>
+    <p>Matrícula de <b id="nombreFolioFicha"></b>. El nuevo número no puede estar en uso por otra ficha.</p>
+    <input type="number" id="inputFolioFicha" min="1" step="1" style="text-align:center;font-size:1.5rem">
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="cerrar('ovFolioFicha')">Cancelar</button>
+      <button class="btn btn-pri" id="btnGuardarFolioFicha" onclick="guardarFolioFicha()">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="ovAviso">
   <div class="modal">
     <h3 id="avisoTitulo"></h3>
@@ -428,7 +453,7 @@
 <!-- Área de impresión -->
 <div id="printArea"></div>
 
-<script src="js/app.js?v=20261019"></script>
-<script src="js/ui.js?v=20261019"></script>
+<script src="js/app.js?v=20261020"></script>
+<script src="js/ui.js?v=20261020"></script>
 </body>
 </html>
