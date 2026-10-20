@@ -204,6 +204,64 @@ language sql security definer
 set search_path = public
 as $$ delete from public.prematriculas where codigo = p_codigo; $$;
 
+-- Panel de encargados: ¿cuál será el próximo N° de ficha?
+create or replace function public.ver_siguiente_folio(p_clave text)
+returns integer
+language plpgsql stable security definer
+set search_path = public
+as $$
+declare v_last bigint; v_called boolean;
+begin
+  perform public._exigir_clave(p_clave);
+  select last_value, is_called into v_last, v_called from public.folio_2027_seq;
+  return (case when v_called then v_last + 1 else v_last end)::integer;
+end;
+$$;
+
+-- Panel de encargados: define el próximo N° de ficha (por ejemplo, para volver a 1).
+-- No permite un número que ya esté usado por una matrícula guardada.
+create or replace function public.establecer_siguiente_folio(p_clave text, p_valor integer)
+returns integer
+language plpgsql security definer
+set search_path = public
+as $$
+declare v_min integer;
+begin
+  perform public._exigir_clave(p_clave);
+  select coalesce(max(folio), 0) + 1 into v_min from public.matriculas;
+  if p_valor is null or p_valor < 1 then
+    raise exception 'folio_invalido: el número debe ser 1 o mayor';
+  end if;
+  if p_valor < v_min then
+    raise exception 'folio_en_uso: ya existen fichas hasta el N° %, el mínimo permitido es %', v_min - 1, v_min;
+  end if;
+  perform setval('public.folio_2027_seq', p_valor, false);
+  return p_valor;
+end;
+$$;
+
+-- Panel de encargados: cambia el N° de ficha de una matrícula
+create or replace function public.cambiar_folio_matricula(p_clave text, p_id uuid, p_folio integer)
+returns void
+language plpgsql security definer
+set search_path = public
+as $$
+begin
+  perform public._exigir_clave(p_clave);
+  if p_folio is null or p_folio < 1 then
+    raise exception 'folio_invalido: el número debe ser 1 o mayor';
+  end if;
+  if exists (select 1 from public.matriculas where folio = p_folio and id <> p_id) then
+    raise exception 'folio_duplicado: el N° % ya lo tiene otra ficha', p_folio;
+  end if;
+  update public.matriculas
+     set folio = p_folio,
+         datos = jsonb_set(datos, '{folio}', to_jsonb(p_folio::text))
+   where id = p_id;
+  if not found then raise exception 'matricula_no_encontrada'; end if;
+end;
+$$;
+
 -- Solo estas funciones quedan disponibles para el navegador (rol anon)
 grant execute on function
   public.verificar_clave(text),
@@ -214,7 +272,10 @@ grant execute on function
   public.eliminar_matricula(text, uuid),
   public.crear_prematricula(jsonb),
   public.cargar_prematricula(text),
-  public.eliminar_prematricula(text)
+  public.eliminar_prematricula(text),
+  public.ver_siguiente_folio(text),
+  public.establecer_siguiente_folio(text, integer),
+  public.cambiar_folio_matricula(text, uuid, integer)
 to anon, authenticated;
 
 -- ---------- Si vienes de Firebase y ya tenías fichas numeradas ----------
