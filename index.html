@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<link rel="stylesheet" href="css/styles.css?v=20261021">
+<link rel="stylesheet" href="css/styles.css?v=20261022">
 </head>
 <body>
 
@@ -126,14 +126,6 @@
             <label>Correo electrónico <span class="opt">(opcional)</span></label>
             <input type="email" id="e_mail">
           </div>
-          <div class="field" style="grid-column:1/-1">
-            <label>Foto del estudiante <span class="opt">(opcional)</span></label>
-            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-              <img id="miniaturaFoto" style="display:none;width:64px;height:64px;object-fit:cover;border-radius:8px;border:1.5px solid var(--linea)" alt="Foto del estudiante">
-              <button type="button" class="btn btn-ghost" id="btnTomarFoto" onclick="abrirFoto()">📷 Tomar foto del estudiante</button>
-            </div>
-          </div>
-
           <!-- Solo estudiante NUEVO -->
           <div class="field solo-nuevo" style="grid-column:1/-1">
             <label>Colegio de procedencia <span class="req">*</span></label>
@@ -452,26 +444,10 @@
   </div>
 </div>
 
-<div class="overlay" id="ovFoto">
-  <div class="modal" style="text-align:center">
-    <h3>Foto del estudiante</h3>
-    <video id="videoFoto" autoplay playsinline muted style="width:100%;max-width:320px;border-radius:10px;background:#000"></video>
-    <canvas id="canvasFoto" style="display:none"></canvas>
-    <img id="previewFoto" alt="Vista previa" style="display:none;width:100%;max-width:320px;border-radius:10px">
-    <p class="hint err" id="fotoError"></p>
-    <div class="modal-btns" style="justify-content:center">
-      <button type="button" class="btn btn-ghost" onclick="cerrarFoto()">Cancelar</button>
-      <button type="button" class="btn btn-pri" id="btnCapturar" onclick="capturarFoto()">📸 Capturar</button>
-      <button type="button" class="btn btn-ghost" id="btnRetomar" style="display:none" onclick="abrirFoto()">🔄 Volver a tomar</button>
-      <button type="button" class="btn btn-pri" id="btnUsarFoto" style="display:none" onclick="usarFoto()">✅ Usar esta foto</button>
-    </div>
-  </div>
-</div>
-
 <!-- Área de impresión -->
 <div id="printArea"></div>
 
-<script src="js/app.js?v=20261021"></script>
-<script src="js/ui.js?v=20261021"></script>
+<script src="js/app.js?v=20261022"></script>
+<script src="js/ui.js?v=20261022"></script>
 </body>
 </html>
