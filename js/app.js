@@ -12,7 +12,7 @@ LOGO_IMG.src = LOGO_SRC;
 //    (Supabase → Project Settings → API). Nunca pegues aquí la clave service_role.
 //    La base se crea ejecutando supabase/schema.sql en el SQL Editor; la clave del
 //    panel de encargados se define ahí y se valida en el servidor.
-const SUPABASE_URL = "PEGA_AQUI_LA_URL_DE_SUPABASE";
+const SUPABASE_URL = "https://mtlunrefaxsagfkphvvw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_bjKNRfhy3hQgXnE8wzvDSw_6Wpfu1CI"; // clave pública (publishable): segura en el navegador porque las tablas no son accesibles directamente
 
 // 2) Envío automático del comprobante al apoderado (Google Apps Script + Gmail, gratis)
