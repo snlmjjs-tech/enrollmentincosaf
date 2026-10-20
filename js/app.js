@@ -170,7 +170,7 @@ function rutValido(r){
   inp.addEventListener("input",()=>{ inp.value = formatearRut(inp.value); });
 });
 
-/* ---------- Datos de prueba: escribir 2179 en el RUT del estudiante y salir del campo (solo modo profesor) ---------- */
+/* ---------- Datos de prueba: escribir 2179 en el RUT del estudiante y salir del campo (profesores y apoderados) ---------- */
 function llenarDatosPrueba(){
   const set = (id,val)=>{ document.getElementById(id).value = val; };
   set("e_nombre","Prueba de Matrículas"); set("e_rut","11.111.111-1"); set("e_fnac","2012-03-15");
@@ -188,10 +188,12 @@ function llenarDatosPrueba(){
   set("s_dir","Calle de Prueba 393"); set("s_comuna","San Fernando"); set("s_nacionalidad","Chilena");
   set("s_cel","393893"); set("s_mail","");
   document.querySelectorAll("input.bad,select.bad").forEach(i=>i.classList.remove("bad"));
-  document.getElementById("e_nomina_hint").textContent = "🧪 Datos de prueba cargados. Escribe un correo en el apoderado para probar el envío del certificado.";
+  document.getElementById("e_nomina_hint").textContent = MODO_APODERADO
+    ? "🧪 Datos de prueba cargados. Pulsa «Enviar pre-matrícula» al final para probar."
+    : "🧪 Datos de prueba cargados. Escribe un correo en el apoderado para probar el envío del certificado.";
 }
 document.getElementById("e_rut").addEventListener("blur", ()=>{
-  if (!MODO_APODERADO && limpiarRut(document.getElementById("e_rut").value)==="2179") llenarDatosPrueba();
+  if (limpiarRut(document.getElementById("e_rut").value)==="2179") llenarDatosPrueba();
 });
 
 /* ---------- Validación ---------- */
