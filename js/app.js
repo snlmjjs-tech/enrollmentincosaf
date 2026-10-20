@@ -54,8 +54,6 @@ let tipoEstudiante = "nuevo";
 let fichaActual = null;
 let yaImprimio = false;
 let codigoPreCargado = null;
-let fotoEstudianteBase64 = null;
-let streamFoto = null;
 let registros = [];
 let registrosVisibles = [];
 let claveEliminarPendiente = null;
@@ -128,9 +126,7 @@ function iniciarFicha(tipo){
   codigoPreCargado = null;
   editandoKey = null;
   editandoOriginal = null;
-  fotoEstudianteBase64 = null;
   document.getElementById("ficha").reset();
-  actualizarMiniaturaFoto();
   document.querySelectorAll(".subfields").forEach(s=>s.classList.remove("show"));
   document.querySelectorAll("input.bad,select.bad").forEach(i=>i.classList.remove("bad"));
   document.getElementById("bannerErr").classList.remove("show");
@@ -145,69 +141,6 @@ function iniciarFicha(tipo){
 }
 function volverInicio(){ mostrar("scr-home"); }
 function nuevaMatricula(){ mostrar("scr-home"); }
-
-/* ---------- Foto del estudiante (webcam) ---------- */
-function actualizarMiniaturaFoto(){
-  const mini = document.getElementById("miniaturaFoto");
-  const btn = document.getElementById("btnTomarFoto");
-  if (fotoEstudianteBase64){
-    mini.src = fotoEstudianteBase64;
-    mini.style.display = "";
-    btn.textContent = "📷 Volver a tomar foto";
-  } else {
-    mini.style.display = "none";
-    btn.textContent = "📷 Tomar foto del estudiante";
-  }
-}
-function detenerCamara(){
-  if (streamFoto){ streamFoto.getTracks().forEach(t=>t.stop()); streamFoto = null; }
-}
-async function abrirFoto(){
-  document.getElementById("fotoError").textContent = "";
-  document.getElementById("previewFoto").style.display = "none";
-  document.getElementById("videoFoto").style.display = "";
-  document.getElementById("btnCapturar").style.display = "";
-  document.getElementById("btnRetomar").style.display = "none";
-  document.getElementById("btnUsarFoto").style.display = "none";
-  abrir("ovFoto");
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-    document.getElementById("fotoError").textContent = "Este navegador no permite acceder a la cámara.";
-    return;
-  }
-  try{
-    streamFoto = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
-    document.getElementById("videoFoto").srcObject = streamFoto;
-  }catch(err){
-    document.getElementById("fotoError").textContent = "No se pudo acceder a la cámara: " + err.message;
-  }
-}
-function cerrarFoto(){
-  detenerCamara();
-  cerrar("ovFoto");
-}
-function capturarFoto(){
-  const video = document.getElementById("videoFoto");
-  if (!video.videoWidth){ return; }
-  const canvas = document.getElementById("canvasFoto");
-  // Recorte vertical 3:4 centrado (formato carnet)
-  const vw = video.videoWidth, vh = video.videoHeight;
-  const sw = Math.min(vw, vh * 3 / 4), sh = sw * 4 / 3;
-  canvas.width = 360; canvas.height = 480;
-  canvas.getContext("2d").drawImage(video, (vw - sw) / 2, (vh - sh) / 2, sw, sh, 0, 0, canvas.width, canvas.height);
-  window._fotoTempDataUrl = canvas.toDataURL("image/jpeg", 0.85);
-  document.getElementById("previewFoto").src = window._fotoTempDataUrl;
-  document.getElementById("previewFoto").style.display = "";
-  document.getElementById("videoFoto").style.display = "none";
-  document.getElementById("btnCapturar").style.display = "none";
-  document.getElementById("btnRetomar").style.display = "";
-  document.getElementById("btnUsarFoto").style.display = "";
-  detenerCamara();
-}
-function usarFoto(){
-  fotoEstudianteBase64 = window._fotoTempDataUrl || null;
-  actualizarMiniaturaFoto();
-  cerrar("ovFoto");
-}
 
 function toggleSub(grupo){
   const val = document.querySelector(`input[name="${grupo}"]:checked`)?.value;
@@ -338,8 +271,7 @@ function recolectarDatos(){
       repitencia: radio("rep"), repCurso: v("e_repCurso"), repAnio: v("e_repAnio"),
       pie: radio("pie"), pieDiagnostico: v("e_pieDiag"), pieDocumentacion: radio("pieDoc"),
       salud: radio("salud"), saludDetalle: v("e_saludDet"),
-      observaciones: v("e_obs"),
-      foto: fotoEstudianteBase64 || ""
+      observaciones: v("e_obs")
     },
     apoderado: { nombre: v("a_nombre"), rut: v("a_rut"), edad: v("a_edad"), direccion: v("a_dir"), comuna: v("a_comuna"), nacionalidad: v("a_nacionalidad"), celular: v("a_cel"), correo: v("a_mail") },
     suplente: conSup ? { nombre: v("s_nombre"), rut: v("s_rut"), edad: v("s_edad"), direccion: v("s_dir"), comuna: v("s_comuna"), nacionalidad: v("s_nacionalidad"), celular: v("s_cel"), correo: v("s_mail") } : null
@@ -451,8 +383,6 @@ function llenarFicha(d, mensaje){
   set("e_nombre",E.nombre); set("e_rut",E.rut); set("e_fnac",E.fnac); set("e_dir",E.direccion);
   set("e_comuna",E.comuna); set("e_nacionalidad",E.nacionalidad);
   set("e_cel",E.celular); set("e_mail",E.correo); set("e_obs",E.observaciones);
-  fotoEstudianteBase64 = E.foto || null;
-  actualizarMiniaturaFoto();
   if (d.tipo==="nuevo"){ set("e_procedencia",E.procedencia); }
   else {
     const curso = (E.cursoMatricula || E.cursoAnterior || "").trim();
@@ -553,9 +483,6 @@ function fichaAntecedentesInterior(f){
   const cursoOProcedencia = f.tipo==="antiguo"
     ? filaDato("Curso 2027", E.cursoMatricula || E.cursoAnterior || "—")
     : filaDato("Colegio de procedencia", E.procedencia);
-  const fotoHtml = E.foto
-    ? `<img src="${E.foto}" alt="Foto del estudiante" style="width:100%;height:100%;object-fit:cover;border-radius:6px">`
-    : "Foto carnet";
   return `
     <h2 class="ficha-h2">Ficha de Antecedentes del Estudiante</h2>
     <div class="ficha-top">
@@ -573,7 +500,7 @@ function fichaAntecedentesInterior(f){
         ${filaDato("Correo", E.correo)}
         ${cursoOProcedencia}
       </div>
-      <div class="ficha-foto">${fotoHtml}</div>
+      <div class="ficha-foto">Foto carnet</div>
     </div>
     <h3 class="ficha-subtitulo">Apoderado titular</h3>
     <div class="ficha-datos">
