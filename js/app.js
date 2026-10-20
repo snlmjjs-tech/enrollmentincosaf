@@ -3,23 +3,17 @@
    ========================================================== */
 const NOMBRE_COLEGIO = "Instituto Comercial Alberto Valenzuela Llanos de San Fernando";
 const CONTACTO_COLEGIO = { correo: "lissette.maldonado@slepcolchagua.cl", telefono: "72 2847263", direccion: "Av. Manso de Velasco 389, San Fernando" };
-const CLAVE_ADMIN = "incosaf2027"; // 🔑 cámbiala por la que quieras
 const LOGO_SRC = document.querySelector(".logo-header").src; // reutiliza el mismo logo del encabezado en los documentos impresos
 // jsPDF necesita el logo como imagen ya cargada: se prepara una vez al iniciar
 const LOGO_IMG = new Image();
 LOGO_IMG.src = LOGO_SRC;
 
-// 1) Firebase: pega aquí la configuración de TU proyecto
-//    (Consola Firebase → Configuración del proyecto → Tus apps → SDK)
-const firebaseConfig = {
-  apiKey: "AIzaSyC3BboH372-0w_61AeF6pDaCEH_QRHPcao",
-  authDomain: "matricula-incosaf-2027.firebaseapp.com",
-  databaseURL: "https://matricula-incosaf-2027-default-rtdb.firebaseio.com",
-  projectId: "matricula-incosaf-2027",
-  storageBucket: "matricula-incosaf-2027.firebasestorage.app",
-  messagingSenderId: "788236687215",
-  appId: "1:788236687215:web:18336c9efffb417164fa9a"
-};
+// 1) Supabase: pega aquí la URL y la clave PÚBLICA (anon) de TU proyecto
+//    (Supabase → Project Settings → API). Nunca pegues aquí la clave service_role.
+//    La base se crea ejecutando supabase/schema.sql en el SQL Editor; la clave del
+//    panel de encargados se define ahí y se valida en el servidor.
+const SUPABASE_URL = "https://mtlunrefaxsagfkphvvw.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_bjKNRfhy3hQgXnE8wzvDSw_6Wpfu1CI"; // clave pública (publishable): segura en el navegador porque las tablas no son accesibles directamente
 
 // 2) Envío automático del comprobante al apoderado (Google Apps Script + Gmail, gratis)
 //    Crea un proyecto en script.google.com, pega el código del script, despliega como
@@ -28,13 +22,25 @@ const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzFw8rbYDDGh9ZD
 const APPS_SCRIPT_SECRETO = "ZZWBOa92quuP2qK3la7vVYhc";
 /* ========================================================== */
 
-let db = null;
+let sb = null;
 try {
-  if (!firebaseConfig.apiKey.includes("PEGA_AQUI")) {
-    firebase.initializeApp(firebaseConfig);
-    db = firebase.database();
+  if (!SUPABASE_URL.includes("PEGA_AQUI") && !SUPABASE_ANON_KEY.includes("PEGA_AQUI")) {
+    sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   }
-} catch(e){ console.error("Firebase:", e); }
+} catch(e){ console.error("Supabase:", e); }
+
+// Llama a una función de la base (ver supabase/schema.sql) y lanza un Error legible si falla
+async function rpc(nombre, args){
+  if (!sb) throw new Error("Supabase no está configurado. Pega la URL y la clave anon al inicio de js/app.js.");
+  const { data, error } = await sb.rpc(nombre, args || {});
+  if (error) {
+    if (/clave_incorrecta/.test(error.message)) throw new Error("La clave de encargados no es válida o cambió. Vuelve a ingresarla.");
+    throw new Error(error.message);
+  }
+  return data;
+}
+// Clave de encargados ingresada en esta sesión (solo en memoria; el servidor la valida en cada operación)
+let claveAdmin = null;
 
 const correoListo = !APPS_SCRIPT_URL.includes("PEGA_AQUI");
 
@@ -348,8 +354,7 @@ document.getElementById("ficha").addEventListener("submit", async e=>{
     const btnGuardar = e.target.querySelector('button[type="submit"]');
     btnGuardar.disabled = true; btnGuardar.textContent = "Guardando…";
     try{
-      if (!db) throw new Error("Firebase no está configurado.");
-      await db.ref("matriculas2027/"+editandoKey).set({ ...editandoOriginal, ...datos });
+      await rpc("actualizar_matricula", { p_clave: claveAdmin, p_id: editandoKey, p_ficha: { ...editandoOriginal, ...datos } });
       aviso("Cambios guardados", "Se actualizaron los datos de la matrícula.");
       editandoKey = null;
       editandoOriginal = null;
@@ -373,14 +378,11 @@ document.getElementById("ficha").addEventListener("submit", async e=>{
   btnGenerar.disabled = true; btnGenerar.textContent = "Generando ficha…";
   let numeroFolio = null;
   try{
-    if (!db) throw new Error("Firebase no está configurado.");
-    const res = await db.ref("contadorFolio2027").transaction(actual => (actual||0)+1);
-    if (res.committed) numeroFolio = String(res.snapshot.val());
-    else throw new Error("La transacción del contador no se completó.");
+    numeroFolio = String(await rpc("obtener_folio"));
   }catch(err){
     console.error("Folio:", err);
     aviso("No se pudo generar el número de ficha",
-      "Firebase rechazó la escritura del contador de folios.<br><br><b>Causa más común:</b> las reglas de la base de datos no permiten escribir en <code>contadorFolio2027</code>. Actualiza las reglas en la consola de Firebase.<br><br>Detalle técnico: " + err.message);
+      "No fue posible pedir el folio a la base de datos. Revisa que Supabase esté configurado y que ejecutaste <code>supabase/schema.sql</code>.<br><br>Detalle técnico: " + err.message);
   }
   btnGenerar.disabled = false; btnGenerar.textContent = "Generar documentos de matrícula →";
   if (!numeroFolio) return; // no continuar sin folio válido
@@ -395,18 +397,7 @@ document.getElementById("ficha").addEventListener("submit", async e=>{
 async function guardarPrematricula(datos, btn){
   btn.disabled = true; btn.textContent = "Enviando…";
   try{
-    if (!db) throw new Error("No hay conexión con la base de datos.");
-    // Generar código único de 4 dígitos
-    let codigo = null;
-    for (let i=0; i<25; i++){
-      const cand = String(Math.floor(1000 + Math.random()*9000));
-      const existe = await db.ref("prematriculas2027/"+cand).get();
-      if (!existe.exists()){ codigo = cand; break; }
-    }
-    if (!codigo) throw new Error("No se pudo generar un código disponible. Intenta de nuevo.");
-    await db.ref("prematriculas2027/"+codigo).set({
-      codigo, creada: new Date().toLocaleString("es-CL"), datos
-    });
+    const codigo = await rpc("crear_prematricula", { p_datos: datos });
     document.getElementById("codigoGrande").textContent = codigo;
     mostrar("scr-codigo");
   }catch(err){
@@ -429,11 +420,10 @@ async function cargarPrematricula(){
   const btn = document.getElementById("btnBuscarCodigo");
   btn.disabled = true; btn.textContent = "Buscando…";
   try{
-    if (!db) throw new Error("Firebase no está configurado.");
-    const snap = await db.ref("prematriculas2027/"+codigo).get();
-    if (!snap.exists()){ aviso("Código no encontrado","No existe una pre-matrícula con el código <b>"+codigo+"</b>. Verifica con el apoderado."); return; }
+    const datos = await rpc("cargar_prematricula", { p_codigo: codigo });
+    if (!datos){ aviso("Código no encontrado","No existe una pre-matrícula con el código <b>"+codigo+"</b>. Verifica con el apoderado."); return; }
     cerrar("ovCodigo");
-    llenarFicha(snap.val().datos);
+    llenarFicha(datos);
     codigoPreCargado = codigo;
   }catch(err){
     aviso("Error al buscar", err.message);
@@ -701,12 +691,11 @@ async function finalizarMatricula(){
   const btn = document.getElementById("btnFinalizar");
   btn.disabled = true; btn.textContent = "Guardando…";
   try{
-    if (!db) throw new Error("Firebase no está configurado. Pega la configuración de tu proyecto al inicio del archivo.");
-    await db.ref("matriculas2027").push(fichaActual);
+    await rpc("guardar_matricula", { p_ficha: fichaActual });
 
     // Si venía de una pre-matrícula, eliminarla (el código ya se usó)
     if (codigoPreCargado){
-      try{ await db.ref("prematriculas2027/"+codigoPreCargado).remove(); }catch(e){ console.error(e); }
+      try{ await rpc("eliminar_prematricula", { p_codigo: codigoPreCargado }); }catch(e){ console.error(e); }
       codigoPreCargado = null;
     }
 
@@ -783,33 +772,35 @@ ${NOMBRE_COLEGIO} · ${CONTACTO_COLEGIO.direccion}`;
 /* ---------- Panel admin ---------- */
 function pedirClaveAdmin(){ document.getElementById("inputClave").value=""; abrir("ovClave"); setTimeout(()=>document.getElementById("inputClave").focus(),100); }
 document.getElementById("inputClave").addEventListener("keydown",e=>{ if(e.key==="Enter") validarClave(); });
-function validarClave(){
-  if (document.getElementById("inputClave").value !== CLAVE_ADMIN){
-    aviso("Clave incorrecta","La clave ingresada no es válida."); return;
+async function validarClave(){
+  const clave = document.getElementById("inputClave").value;
+  try{
+    if (!(await rpc("verificar_clave", { p_clave: clave }))){
+      aviso("Clave incorrecta","La clave ingresada no es válida."); return;
+    }
+  }catch(err){
+    aviso("No se pudo verificar la clave", err.message); return;
   }
+  claveAdmin = clave;
   cerrar("ovClave");
   cargarAdmin();
 }
 async function cargarAdmin(){
   mostrar("scr-admin");
   const tb = document.getElementById("tbodyAdmin");
-  if (!db){ tb.innerHTML = `<tr><td colspan="9">Firebase no está configurado.</td></tr>`; return; }
+  if (!sb){ tb.innerHTML = `<tr><td colspan="9">Supabase no está configurado.</td></tr>`; return; }
   tb.innerHTML = `<tr><td colspan="9">Cargando…</td></tr>`;
   try{
-    const snap = await db.ref("matriculas2027").get();
-    registros = [];
-    snap.forEach(ch=>{
-      const val = ch.val() || {};
-      registros.push({
-        _key: ch.key,
-        folio: val.folio ?? "—",
-        fechaRegistro: val.fechaRegistro ?? "—",
-        tipo: val.tipo ?? "nuevo",
-        estudiante: val.estudiante ?? {},
-        apoderado: val.apoderado ?? {},
-        suplente: val.suplente ?? null
-      });
-    });
+    const filas = await rpc("listar_matriculas", { p_clave: claveAdmin });
+    registros = (filas || []).map(val => ({
+      _key: val._key,
+      folio: val.folio ?? "—",
+      fechaRegistro: val.fechaRegistro ?? "—",
+      tipo: val.tipo ?? "nuevo",
+      estudiante: val.estudiante ?? {},
+      apoderado: val.apoderado ?? {},
+      suplente: val.suplente ?? null
+    }));
     // Orden ascendente 1, 2, 3... por folio (numérico si es posible, si no por fecha de registro)
     registros.sort((a,b)=>{
       const na = Number(a.folio), nb = Number(b.folio);
@@ -906,7 +897,7 @@ async function eliminarMatricula(){
   const btn = document.getElementById("btnConfirmarEliminar");
   btn.disabled = true; btn.textContent = "Eliminando…";
   try{
-    await db.ref("matriculas2027/" + claveEliminarPendiente).remove();
+    await rpc("eliminar_matricula", { p_clave: claveAdmin, p_id: claveEliminarPendiente });
     cerrar("ovEliminar");
     cargarAdmin();
   }catch(err){
