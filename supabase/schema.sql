@@ -42,6 +42,10 @@ create table if not exists public.config (
   clave_hash text not null
 );
 
+-- Clave interna (inspectores y profesores que registran matrículas). Es distinta de la clave de
+-- encargados (panel). Mientras no se defina, solo funciona la clave de encargados.
+alter table public.config add column if not exists clave_interna_hash text;
+
 alter table public.matriculas    enable row level security;
 alter table public.prematriculas enable row level security;
 alter table public.config        enable row level security;
@@ -57,6 +61,10 @@ values (true, extensions.crypt('CAMBIA_ESTA_CLAVE', extensions.gen_salt('bf')))
 on conflict (id) do nothing;
 -- (si ya existía y quieres cambiarla:)
 -- update public.config set clave_hash = extensions.crypt('NUEVA_CLAVE', extensions.gen_salt('bf')) where id;
+
+-- Clave interna: NO se define aquí a propósito (así nunca queda una clave de ejemplo activa).
+-- Para definirla o cambiarla, ejecuta esto por separado con la clave que quieras:
+--   update public.config set clave_interna_hash = extensions.crypt('TU_CLAVE_INTERNA', extensions.gen_salt('bf')) where id;
 
 -- ---------- Funciones internas ----------
 
@@ -84,7 +92,47 @@ end;
 $$;
 revoke all on function public._exigir_clave(text) from public, anon, authenticated;
 
+-- La clave interna vale para registrar; la clave de encargados también vale (es la de mayor nivel).
+create or replace function public._clave_interna_ok(p_clave text)
+returns boolean
+language sql stable security definer
+set search_path = public, extensions
+as $$
+  select coalesce(
+    (select (clave_interna_hash is not null and clave_interna_hash = extensions.crypt(coalesce(p_clave, ''), clave_interna_hash))
+         or clave_hash = extensions.crypt(coalesce(p_clave, ''), clave_hash)
+       from public.config where id),
+    false);
+$$;
+revoke all on function public._clave_interna_ok(text) from public, anon, authenticated;
+
+create or replace function public._exigir_clave_interna(p_clave text)
+returns void
+language plpgsql security definer
+set search_path = public, extensions
+as $$
+begin
+  if not public._clave_interna_ok(p_clave) then
+    raise exception 'clave_incorrecta' using errcode = '28000';
+  end if;
+end;
+$$;
+revoke all on function public._exigir_clave_interna(text) from public, anon, authenticated;
+
+-- Versiones anteriores de estas funciones (sin clave): se eliminan para que nadie las use
+drop function if exists public.obtener_folio();
+drop function if exists public.guardar_matricula(jsonb);
+drop function if exists public.cargar_prematricula(text);
+drop function if exists public.eliminar_prematricula(text);
+
 -- ---------- Funciones que usa la app ----------
+
+-- ¿La clave interna es correcta? (pantalla de entrada)
+create or replace function public.verificar_clave_interna(p_clave text)
+returns boolean
+language sql stable security definer
+set search_path = public, extensions
+as $$ select public._clave_interna_ok(p_clave); $$;
 
 -- ¿La clave de encargados es correcta?
 create or replace function public.verificar_clave(p_clave text)
@@ -94,14 +142,19 @@ set search_path = public, extensions
 as $$ select public._clave_ok(p_clave); $$;
 
 -- Siguiente N° de ficha (se pide al generar los documentos)
-create or replace function public.obtener_folio()
+create or replace function public.obtener_folio(p_clave text)
 returns integer
-language sql security definer
+language plpgsql security definer
 set search_path = public
-as $$ select nextval('public.folio_2027_seq')::integer; $$;
+as $$
+begin
+  perform public._exigir_clave_interna(p_clave);
+  return nextval('public.folio_2027_seq')::integer;
+end;
+$$;
 
 -- Guarda la matrícula al finalizar. El folio debe ser uno ya entregado por obtener_folio().
-create or replace function public.guardar_matricula(p_ficha jsonb)
+create or replace function public.guardar_matricula(p_clave text, p_ficha jsonb)
 returns uuid
 language plpgsql security definer
 set search_path = public
@@ -110,6 +163,7 @@ declare
   v_folio integer := (p_ficha->>'folio')::integer;
   v_id    uuid;
 begin
+  perform public._exigir_clave_interna(p_clave);
   if v_folio is null or v_folio < 1 or v_folio > (select last_value from public.folio_2027_seq) then
     raise exception 'folio_invalido';
   end if;
@@ -190,19 +244,29 @@ begin
 end;
 $$;
 
--- Profesor: carga una pre-matrícula por su código (devuelve null si no existe)
-create or replace function public.cargar_prematricula(p_codigo text)
+-- Profesor: carga una pre-matrícula por su código (devuelve null si no existe). Exige clave interna.
+create or replace function public.cargar_prematricula(p_clave text, p_codigo text)
 returns jsonb
-language sql stable security definer
+language plpgsql stable security definer
 set search_path = public
-as $$ select datos from public.prematriculas where codigo = p_codigo; $$;
+as $$
+begin
+  perform public._exigir_clave_interna(p_clave);
+  return (select datos from public.prematriculas where codigo = p_codigo);
+end;
+$$;
 
--- Profesor: elimina la pre-matrícula una vez usada
-create or replace function public.eliminar_prematricula(p_codigo text)
+-- Profesor: elimina la pre-matrícula una vez usada. Exige clave interna.
+create or replace function public.eliminar_prematricula(p_clave text, p_codigo text)
 returns void
-language sql security definer
+language plpgsql security definer
 set search_path = public
-as $$ delete from public.prematriculas where codigo = p_codigo; $$;
+as $$
+begin
+  perform public._exigir_clave_interna(p_clave);
+  delete from public.prematriculas where codigo = p_codigo;
+end;
+$$;
 
 -- Panel de encargados: ¿cuál será el próximo N° de ficha?
 create or replace function public.ver_siguiente_folio(p_clave text)
@@ -265,14 +329,15 @@ $$;
 -- Solo estas funciones quedan disponibles para el navegador (rol anon)
 grant execute on function
   public.verificar_clave(text),
-  public.obtener_folio(),
-  public.guardar_matricula(jsonb),
+  public.verificar_clave_interna(text),
+  public.obtener_folio(text),
+  public.guardar_matricula(text, jsonb),
   public.listar_matriculas(text),
   public.actualizar_matricula(text, uuid, jsonb),
   public.eliminar_matricula(text, uuid),
   public.crear_prematricula(jsonb),
-  public.cargar_prematricula(text),
-  public.eliminar_prematricula(text),
+  public.cargar_prematricula(text, text),
+  public.eliminar_prematricula(text, text),
   public.ver_siguiente_folio(text),
   public.establecer_siguiente_folio(text, integer),
   public.cambiar_folio_matricula(text, uuid, integer)

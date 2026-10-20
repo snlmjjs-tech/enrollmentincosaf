@@ -34,7 +34,7 @@ async function rpc(nombre, args){
   if (!sb) throw new Error("Supabase no está configurado. Pega la URL y la clave anon al inicio de js/app.js.");
   const { data, error } = await sb.rpc(nombre, args || {});
   if (error) {
-    if (/clave_incorrecta/.test(error.message)) throw new Error("La clave de encargados no es válida o cambió. Vuelve a ingresarla.");
+    if (/clave_incorrecta/.test(error.message)) throw new Error("La clave no es válida o cambió. Cierra el acceso y vuelve a ingresarla.");
     const m = /(folio_invalido|folio_en_uso|folio_duplicado): (.*)/.exec(error.message);
     if (m) throw new Error(m[2]);
     throw new Error(error.message);
@@ -43,6 +43,10 @@ async function rpc(nombre, args){
 }
 // Clave de encargados ingresada en esta sesión (solo en memoria; el servidor la valida en cada operación)
 let claveAdmin = null;
+// Clave interna (inspectores) ingresada en la pantalla de entrada. Se guarda solo en esta pestaña
+// (sessionStorage): se borra al cerrar la pestaña o al pulsar «Cerrar acceso».
+let claveInterna = null;
+try{ claveInterna = sessionStorage.getItem("claveInterna"); }catch(e){}
 
 const correoListo = !APPS_SCRIPT_URL.includes("PEGA_AQUI");
 
@@ -103,6 +107,7 @@ if (MODO_APODERADO){
   document.addEventListener("DOMContentLoaded", ()=>{
     document.querySelector(".pre-row").style.display = "none";
     document.querySelector(".admin-link").style.display = "none";
+    document.getElementById("btnSalir").style.display = "none";
     document.querySelector('#ficha button[type="submit"]').textContent = "Enviar pre-matrícula →";
     document.querySelector("header.app .brand p").textContent = "San Fernando · Pre-matrícula del apoderado";
   });
@@ -380,7 +385,7 @@ document.getElementById("ficha").addEventListener("submit", async e=>{
   btnGenerar.disabled = true; btnGenerar.textContent = "Generando ficha…";
   let numeroFolio = null;
   try{
-    numeroFolio = String(await rpc("obtener_folio"));
+    numeroFolio = String(await rpc("obtener_folio", { p_clave: claveInterna }));
   }catch(err){
     console.error("Folio:", err);
     aviso("No se pudo generar el número de ficha",
@@ -422,7 +427,7 @@ async function cargarPrematricula(){
   const btn = document.getElementById("btnBuscarCodigo");
   btn.disabled = true; btn.textContent = "Buscando…";
   try{
-    const datos = await rpc("cargar_prematricula", { p_codigo: codigo });
+    const datos = await rpc("cargar_prematricula", { p_clave: claveInterna, p_codigo: codigo });
     if (!datos){ aviso("Código no encontrado","No existe una pre-matrícula con el código <b>"+codigo+"</b>. Verifica con el apoderado."); return; }
     cerrar("ovCodigo");
     llenarFicha(datos);
@@ -693,11 +698,11 @@ async function finalizarMatricula(){
   const btn = document.getElementById("btnFinalizar");
   btn.disabled = true; btn.textContent = "Guardando…";
   try{
-    await rpc("guardar_matricula", { p_ficha: fichaActual });
+    await rpc("guardar_matricula", { p_clave: claveInterna, p_ficha: fichaActual });
 
     // Si venía de una pre-matrícula, eliminarla (el código ya se usó)
     if (codigoPreCargado){
-      try{ await rpc("eliminar_prematricula", { p_codigo: codigoPreCargado }); }catch(e){ console.error(e); }
+      try{ await rpc("eliminar_prematricula", { p_clave: claveInterna, p_codigo: codigoPreCargado }); }catch(e){ console.error(e); }
       codigoPreCargado = null;
     }
 
@@ -1023,4 +1028,47 @@ async function guardarFolioFicha(){
   }finally{
     btn.disabled = false; btn.textContent = "Guardar";
   }
+}
+
+/* ---------- Acceso del personal (clave interna) ---------- */
+// Los apoderados que llegan por el QR (?apoderado) no pasan por esta pantalla.
+function cerrarAcceso(){
+  claveInterna = null; claveAdmin = null;
+  try{ sessionStorage.removeItem("claveInterna"); }catch(e){}
+  document.getElementById("inputClaveInterna").value = "";
+  document.getElementById("accesoError").textContent = "";
+  mostrar("scr-acceso");
+}
+async function entrarConClave(clave, silencioso){
+  const err = document.getElementById("accesoError");
+  const btn = document.getElementById("btnAcceso");
+  err.textContent = "";
+  btn.disabled = true; btn.textContent = "Verificando…";
+  try{
+    if (!(await rpc("verificar_clave_interna", { p_clave: clave }))){
+      if (!silencioso) err.textContent = "Clave incorrecta.";
+      return false;
+    }
+    claveInterna = clave;
+    try{ sessionStorage.setItem("claveInterna", clave); }catch(e){}
+    mostrar("scr-home");
+    return true;
+  }catch(e){
+    if (!silencioso) err.textContent = "No se pudo verificar la clave: " + e.message;
+    return false;
+  }finally{
+    btn.disabled = false; btn.textContent = "Entrar";
+  }
+}
+document.getElementById("formAcceso").addEventListener("submit", e=>{
+  e.preventDefault();
+  const clave = document.getElementById("inputClaveInterna").value;
+  if (!clave){ document.getElementById("accesoError").textContent = "Escribe la clave."; return; }
+  entrarConClave(clave, false);
+});
+if (MODO_APODERADO){
+  mostrar("scr-home");
+} else if (claveInterna){
+  // Había una sesión en esta pestaña: se vuelve a comprobar con el servidor
+  entrarConClave(claveInterna, true).then(ok => { if (!ok) cerrarAcceso(); });
 }

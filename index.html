@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<link rel="stylesheet" href="css/styles.css?v=20261020">
+<link rel="stylesheet" href="css/styles.css?v=20261021">
 </head>
 <body>
 
@@ -32,7 +32,24 @@
 <main class="wrap">
 
   <!-- ============ INICIO ============ -->
-  <section id="scr-home" class="screen active">
+  <!-- ============ ACCESO DEL PERSONAL ============ -->
+  <section id="scr-acceso" class="screen active">
+    <div class="hero">
+      <span class="eyebrow">🔒 Acceso del personal</span>
+      <h2>Ingresa a la matrícula</h2>
+      <p>Escribe la clave interna para registrar matrículas.</p>
+    </div>
+    <form id="formAcceso" class="acceso-form" novalidate>
+      <div class="field">
+        <label for="inputClaveInterna">Clave interna</label>
+        <input type="password" id="inputClaveInterna" autocomplete="current-password" placeholder="Clave">
+      </div>
+      <div class="hint err" id="accesoError"></div>
+      <button type="submit" class="btn btn-pri" id="btnAcceso" style="width:100%">Entrar</button>
+    </form>
+  </section>
+
+  <section id="scr-home" class="screen">
     <div class="hero">
       <span class="eyebrow">✦ Año escolar 2027</span>
       <h2>Matrícula escolar 2027</h2>
@@ -55,6 +72,7 @@
       <button class="btn btn-ghost" onclick="mostrarQR()">📱 Código QR para apoderados</button>
     </div>
     <button class="admin-link" onclick="pedirClaveAdmin()">Panel de matrículas registradas (encargados)</button>
+    <button class="admin-link" id="btnSalir" onclick="cerrarAcceso()">Cerrar acceso</button>
   </section>
 
   <!-- ============ FORMULARIO ============ -->
@@ -453,7 +471,7 @@
 <!-- Área de impresión -->
 <div id="printArea"></div>
 
-<script src="js/app.js?v=20261020"></script>
-<script src="js/ui.js?v=20261020"></script>
+<script src="js/app.js?v=20261021"></script>
+<script src="js/ui.js?v=20261021"></script>
 </body>
 </html>
