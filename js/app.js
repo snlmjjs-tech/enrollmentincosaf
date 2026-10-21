@@ -127,6 +127,7 @@ function iniciarFicha(tipo){
   editandoKey = null;
   editandoOriginal = null;
   document.getElementById("ficha").reset();
+  actualizarLugarTrabajo();
   document.querySelectorAll(".subfields").forEach(s=>s.classList.remove("show"));
   document.querySelectorAll("input.bad,select.bad").forEach(i=>i.classList.remove("bad"));
   document.getElementById("bannerErr").classList.remove("show");
@@ -141,6 +142,13 @@ function iniciarFicha(tipo){
 }
 function volverInicio(){ mostrar("scr-home"); }
 function nuevaMatricula(){ mostrar("scr-home"); }
+
+// «¿Dónde trabaja principalmente?» solo aparece si la persona trabaja
+function actualizarLugarTrabajo(){
+  const trabaja = document.getElementById("a_laboral").value.startsWith("Trabaja");
+  document.getElementById("a_lugar_wrap").style.display = trabaja ? "" : "none";
+  if (!trabaja) document.querySelectorAll('input[name="a_lugar"]').forEach(r => r.checked = false);
+}
 
 function toggleSub(grupo){
   const val = document.querySelector(`input[name="${grupo}"]:checked`)?.value;
@@ -183,10 +191,12 @@ function llenarDatosPrueba(){
   set("a_nombre","Apoderado de Prueba"); set("a_rut","12.345.678-5"); set("a_edad","40");
   set("a_dir","Calle de Prueba 393"); set("a_comuna","San Fernando"); set("a_nacionalidad","Chilena");
   set("a_cel","393893"); set("a_mail","");
+  set("a_parentesco","Madre"); setRadio("a_vive","si"); set("a_nivel","4° año de educación media Científico Humanista");
+  set("a_laboral","Trabaja jornada completa (todo el día)"); actualizarLugarTrabajo(); setRadio("a_lugar","Fuera del hogar");
   setRadio("sup","si"); toggleSub("sup");
   set("s_nombre","Suplente de Prueba"); set("s_rut","18.516.142-0"); set("s_edad","38");
   set("s_dir","Calle de Prueba 393"); set("s_comuna","San Fernando"); set("s_nacionalidad","Chilena");
-  set("s_cel","393893"); set("s_mail","");
+  set("s_cel","393893"); set("s_mail",""); set("s_parentesco","Padre"); setRadio("s_vive","no");
   document.querySelectorAll("input.bad,select.bad").forEach(i=>i.classList.remove("bad"));
   document.getElementById("e_nomina_hint").textContent = MODO_APODERADO
     ? "🧪 Datos de prueba cargados. Pulsa «Enviar pre-matrícula» al final para probar."
@@ -243,6 +253,7 @@ function validarFicha(){
   ok = marcar(document.getElementById("a_comuna"), !v("a_comuna")) && ok;
   ok = marcar(document.getElementById("a_nacionalidad"), !v("a_nacionalidad")) && ok;
   ok = marcar(document.getElementById("a_cel"), !v("a_cel")) && ok;
+  ok = marcar(document.getElementById("a_parentesco"), !v("a_parentesco")) && ok;
 
   // Suplente (si se registra)
   if (document.querySelector('input[name="sup"]:checked')?.value==="si"){
@@ -253,6 +264,7 @@ function validarFicha(){
     ok = marcar(document.getElementById("s_comuna"), !v("s_comuna")) && ok;
     ok = marcar(document.getElementById("s_nacionalidad"), !v("s_nacionalidad")) && ok;
     ok = marcar(document.getElementById("s_cel"), !v("s_cel")) && ok;
+    ok = marcar(document.getElementById("s_parentesco"), !v("s_parentesco")) && ok;
   }
   return ok;
 }
@@ -275,8 +287,10 @@ function recolectarDatos(){
       salud: radio("salud"), saludDetalle: v("e_saludDet"),
       observaciones: v("e_obs")
     },
-    apoderado: { nombre: v("a_nombre"), rut: v("a_rut"), edad: v("a_edad"), direccion: v("a_dir"), comuna: v("a_comuna"), nacionalidad: v("a_nacionalidad"), celular: v("a_cel"), correo: v("a_mail") },
-    suplente: conSup ? { nombre: v("s_nombre"), rut: v("s_rut"), edad: v("s_edad"), direccion: v("s_dir"), comuna: v("s_comuna"), nacionalidad: v("s_nacionalidad"), celular: v("s_cel"), correo: v("s_mail") } : null
+    apoderado: { nombre: v("a_nombre"), rut: v("a_rut"), edad: v("a_edad"), direccion: v("a_dir"), comuna: v("a_comuna"), nacionalidad: v("a_nacionalidad"), celular: v("a_cel"), correo: v("a_mail"),
+      parentesco: v("a_parentesco"), viveConEstudiante: radio("a_vive"), nivelEducacional: v("a_nivel"),
+      situacionLaboral: v("a_laboral"), lugarTrabajo: v("a_laboral").startsWith("Trabaja") ? radio("a_lugar") : "" },
+    suplente: conSup ? { nombre: v("s_nombre"), rut: v("s_rut"), edad: v("s_edad"), direccion: v("s_dir"), comuna: v("s_comuna"), nacionalidad: v("s_nacionalidad"), celular: v("s_cel"), correo: v("s_mail"), parentesco: v("s_parentesco"), viveConEstudiante: radio("s_vive") } : null
   };
 }
 
@@ -398,11 +412,13 @@ function llenarFicha(d, mensaje){
   set("a_nombre",A.nombre); set("a_rut",A.rut); set("a_edad",A.edad); set("a_dir",A.direccion);
   set("a_comuna",A.comuna); set("a_nacionalidad",A.nacionalidad);
   set("a_cel",A.celular); set("a_mail",A.correo);
+  set("a_parentesco",A.parentesco); setRadio("a_vive",A.viveConEstudiante); set("a_nivel",A.nivelEducacional);
+  set("a_laboral",A.situacionLaboral); actualizarLugarTrabajo(); setRadio("a_lugar",A.lugarTrabajo);
   setRadio("sup", S ? "si" : "no"); toggleSub("sup");
   if (S){
     set("s_nombre",S.nombre); set("s_rut",S.rut); set("s_edad",S.edad);
     set("s_dir",S.direccion); set("s_comuna",S.comuna); set("s_nacionalidad",S.nacionalidad);
-    set("s_cel",S.celular); set("s_mail",S.correo);
+    set("s_cel",S.celular); set("s_mail",S.correo); set("s_parentesco",S.parentesco); setRadio("s_vive",S.viveConEstudiante);
   }
   aviso("Datos cargados", mensaje || "Se cargaron los datos de la pre-matrícula. Revísalos junto al apoderado antes de generar los documentos.");
 }
@@ -514,6 +530,11 @@ function fichaAntecedentesInterior(f){
       ${filaDato("Nacionalidad", A.nacionalidad)}
       ${filaDato("Celular", A.celular)}
       ${filaDato("Correo", A.correo)}
+      ${filaDato("Parentesco", A.parentesco)}
+      ${filaDato("Vive con el estudiante", A.viveConEstudiante==="si" ? "Sí" : A.viveConEstudiante==="no" ? "No" : "")}
+      ${filaDato("Último nivel educacional", A.nivelEducacional)}
+      ${filaDato("Situación laboral", A.situacionLaboral)}
+      ${A.lugarTrabajo ? filaDato("Dónde trabaja", A.lugarTrabajo) : ""}
     </div>
     ${S ? `
     <h3 class="ficha-subtitulo">Apoderado suplente</h3>
@@ -526,6 +547,8 @@ function fichaAntecedentesInterior(f){
       ${filaDato("Nacionalidad", S.nacionalidad)}
       ${filaDato("Celular", S.celular)}
       ${filaDato("Correo", S.correo)}
+      ${filaDato("Parentesco", S.parentesco)}
+      ${filaDato("Vive con el estudiante", S.viveConEstudiante==="si" ? "Sí" : S.viveConEstudiante==="no" ? "No" : "")}
     </div>` : ""}
     <div class="firma-doble">
       <div class="firma"><span class="linea-firma">${A.nombre} — RUT ${A.rut}<br>Firma del apoderado(a) titular</span></div>
@@ -862,10 +885,14 @@ function descargarExcel(){
     "Edad apoderado": r.apoderado.edad, "Dirección apoderado": r.apoderado.direccion,
     "Comuna apoderado": r.apoderado.comuna, "Nacionalidad apoderado": r.apoderado.nacionalidad,
     "Celular apoderado": r.apoderado.celular, "Correo apoderado": r.apoderado.correo,
+    "Parentesco apoderado": r.apoderado.parentesco, "Apoderado vive con el estudiante": r.apoderado.viveConEstudiante,
+    "Nivel educacional apoderado": r.apoderado.nivelEducacional, "Situación laboral apoderado": r.apoderado.situacionLaboral,
+    "Lugar de trabajo apoderado": r.apoderado.lugarTrabajo,
     "Apoderado suplente": r.suplente ? r.suplente.nombre : "", "RUT suplente": r.suplente ? r.suplente.rut : "",
     "Edad suplente": r.suplente ? r.suplente.edad : "", "Dirección suplente": r.suplente ? r.suplente.direccion : "",
     "Comuna suplente": r.suplente ? r.suplente.comuna : "", "Nacionalidad suplente": r.suplente ? r.suplente.nacionalidad : "",
-    "Celular suplente": r.suplente ? r.suplente.celular : "", "Correo suplente": r.suplente ? r.suplente.correo : ""
+    "Celular suplente": r.suplente ? r.suplente.celular : "", "Correo suplente": r.suplente ? r.suplente.correo : "",
+    "Parentesco suplente": r.suplente ? r.suplente.parentesco : "", "Suplente vive con el estudiante": r.suplente ? r.suplente.viveConEstudiante : ""
   }));
   const ws = XLSX.utils.json_to_sheet(filas);
   const wb = XLSX.utils.book_new();
@@ -898,8 +925,12 @@ function descargarExcelLibro(){
       "Observaciones matrícula": E.observaciones,
       "Apoderado titular": A.nombre, "RUT apoderado": A.rut, "Dirección apoderado": A.direccion,
       "Comuna apoderado": A.comuna, "Celular apoderado": A.celular, "Correo apoderado": A.correo,
+      "Parentesco apoderado": A.parentesco, "Apoderado vive con el estudiante": A.viveConEstudiante,
+      "Nivel educacional apoderado": A.nivelEducacional, "Situación laboral apoderado": A.situacionLaboral,
+      "Lugar de trabajo apoderado": A.lugarTrabajo,
       "Apoderado suplente": S ? S.nombre : "", "RUT suplente": S ? S.rut : "",
-      "Celular suplente": S ? S.celular : "", "Correo suplente": S ? S.correo : ""
+      "Celular suplente": S ? S.celular : "", "Correo suplente": S ? S.correo : "",
+      "Parentesco suplente": S ? S.parentesco : "", "Suplente vive con el estudiante": S ? S.viveConEstudiante : ""
     };
   });
   const ws = XLSX.utils.json_to_sheet(filas);

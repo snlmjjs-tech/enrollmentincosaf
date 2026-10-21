@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<link rel="stylesheet" href="css/styles.css?v=20261023">
+<link rel="stylesheet" href="css/styles.css?v=20261027">
 </head>
 <body>
 
@@ -236,6 +236,69 @@
             <label>Correo electrónico <span class="opt">(opcional — aquí llegará el comprobante)</span></label>
             <input type="email" id="a_mail">
           </div>
+          <div class="field">
+            <label>Parentesco con el estudiante <span class="req">*</span></label>
+            <select id="a_parentesco">
+              <option value="">— Selecciona —</option>
+              <option value="Madre">Madre</option>
+              <option value="Padre">Padre</option>
+              <option value="Abuelo(a)">Abuelo(a)</option>
+              <option value="Hermano(a)">Hermano(a)</option>
+              <option value="Tío(a)">Tío(a)</option>
+              <option value="Tutor(a) legal">Tutor(a) legal</option>
+              <option value="Otro">Otro</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>¿Vive con el estudiante?</label>
+            <div class="radio-row">
+              <label class="radio-pill"><input type="radio" name="a_vive" value="si" checked><span>Sí</span></label>
+              <label class="radio-pill"><input type="radio" name="a_vive" value="no"><span>No</span></label>
+            </div>
+          </div>
+          <div class="field" style="grid-column:1/-1">
+            <label>Último nivel educacional cursado <span class="opt">(opcional)</span></label>
+            <select id="a_nivel">
+              <option value="">— Selecciona —</option>
+              <option>1° año de educación básica</option>
+              <option>2° año de educación básica</option>
+              <option>3° año de educación básica</option>
+              <option>4° año de educación básica</option>
+              <option>5° año de educación básica</option>
+              <option>6° año de educación básica</option>
+              <option>7° año de educación básica</option>
+              <option>8° año de educación básica</option>
+              <option>1° año de educación media</option>
+              <option>2° año de educación media</option>
+              <option>3° año de educación media</option>
+              <option>4° año de educación media Científico Humanista</option>
+              <option>4° ó 5° año de educación media Técnico Profesional o Vocacional</option>
+              <option>Educación en un Centro de Formación Técnica o Instituto Profesional en curso o incompleta</option>
+              <option>Titulado de un Centro de Formación Técnica o Instituto Profesional</option>
+              <option>Educación Universitaria en curso o incompleta</option>
+              <option>Titulado de una Universidad</option>
+              <option>Estudiante o titulado de magíster</option>
+              <option>Estudiante o titulado de doctorado</option>
+            </select>
+          </div>
+          <div class="field" style="grid-column:1/-1">
+            <label>Situación laboral <span class="opt">(opcional)</span></label>
+            <select id="a_laboral" onchange="actualizarLugarTrabajo()">
+              <option value="">— Selecciona —</option>
+              <option>Trabaja jornada completa (todo el día)</option>
+              <option>Trabaja jornada parcial (medio día o algunas horas al día)</option>
+              <option>No trabaja en este momento, pero está en búsqueda de trabajo (cesante o busca trabajo por primera vez)</option>
+              <option>No trabaja y no está en búsqueda de trabajo (dueña de casa, jubilado, pensionado, etc.)</option>
+              <option>Otro</option>
+            </select>
+          </div>
+          <div class="field" id="a_lugar_wrap" style="grid-column:1/-1;display:none">
+            <label>¿Dónde trabaja principalmente? <span class="opt">(opcional)</span></label>
+            <div class="radio-row">
+              <label class="radio-pill"><input type="radio" name="a_lugar" value="En el hogar"><span>En el hogar</span></label>
+              <label class="radio-pill"><input type="radio" name="a_lugar" value="Fuera del hogar"><span>Fuera del hogar</span></label>
+            </div>
+          </div>
         </div>
       </fieldset>
 
@@ -261,6 +324,26 @@
             <div class="field"><label>Nacionalidad <span class="req">*</span></label><input type="text" id="s_nacionalidad"></div>
             <div class="field"><label>Número de celular <span class="req">*</span></label><input type="tel" id="s_cel"></div>
             <div class="field"><label>Correo electrónico <span class="opt">(opcional)</span></label><input type="email" id="s_mail"></div>
+            <div class="field">
+              <label>Parentesco con el estudiante <span class="req">*</span></label>
+              <select id="s_parentesco">
+                <option value="">— Selecciona —</option>
+              <option value="Madre">Madre</option>
+              <option value="Padre">Padre</option>
+              <option value="Abuelo(a)">Abuelo(a)</option>
+              <option value="Hermano(a)">Hermano(a)</option>
+              <option value="Tío(a)">Tío(a)</option>
+              <option value="Tutor(a) legal">Tutor(a) legal</option>
+              <option value="Otro">Otro</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>¿Vive con el estudiante?</label>
+              <div class="radio-row">
+                <label class="radio-pill"><input type="radio" name="s_vive" value="si" checked><span>Sí</span></label>
+                <label class="radio-pill"><input type="radio" name="s_vive" value="no"><span>No</span></label>
+              </div>
+            </div>
           </div>
         </div>
       </fieldset>
@@ -451,7 +534,7 @@
 <!-- Área de impresión -->
 <div id="printArea"></div>
 
-<script src="js/app.js?v=20261023"></script>
-<script src="js/ui.js?v=20261023"></script>
+<script src="js/app.js?v=20261027"></script>
+<script src="js/ui.js?v=20261027"></script>
 </body>
 </html>

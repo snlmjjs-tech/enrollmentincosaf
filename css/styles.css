@@ -107,7 +107,7 @@ input[type=text],input[type=email],input[type=tel],input[type=date],input[type=n
   transition:border-color .2s,box-shadow .25s,background .2s}
 input:hover,select:hover,textarea:hover{border-color:rgba(0,0,0,.28)}
 input:focus,select:focus,textarea:focus{outline:none;background:#fff;border-color:var(--azul);box-shadow:0 0 0 4px rgba(20,53,94,.16)}
-input.bad{border-color:var(--error);background:#fff5f4}
+input.bad,select.bad{border-color:var(--error);background:#fff5f4}
 .hint{font-size:.72rem;color:var(--gris);margin-top:4px}
 .hint.err{color:var(--error);font-weight:600}
 .radio-row{display:flex;gap:10px;flex-wrap:wrap}
@@ -231,5 +231,10 @@ table.lista tbody tr:hover td{background:var(--azul-claro)}
   .print-memo .encabezado-ficha img{width:24pt;height:24pt;object-fit:contain;flex-shrink:0}
   .print-memo .encabezado-ficha .colegio{font-size:8.5pt}
   .print-memo .ficha-h2{margin:2pt 0 5pt;font-size:12pt}
-  .print-memo.ficha-print{min-height:0}
+  .print-memo.ficha-print{min-height:0;line-height:1.22;padding-top:1.2cm}
+  .print-memo.ficha-print .ficha-datos{gap:0 14pt}
+  .print-memo.ficha-print .ficha-subtitulo{margin:6pt 0 1pt}
+  .print-memo.ficha-print .firma-doble{margin-top:12pt}
+  .print-memo.ficha-print .firma{margin-top:22pt}
+  .print-memo.ficha-print .firma-doble .firma{margin-top:0}
 }
