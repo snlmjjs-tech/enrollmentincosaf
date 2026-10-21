@@ -579,24 +579,31 @@ function renderMemos(){
         <img src="${LOGO_SRC}" alt="Logo">
         <div class="pie-texto">${NOMBRE_COLEGIO}<br>Proceso de Matrícula 2027 — Ficha ${fichaActual.folio}</div>
       </div>
-    </div>`).join("") + `
+    </div>`).join("") + htmlFichaImpresa(fichaActual);
+}
+
+// Hoja impresa de la «Ficha de antecedentes del estudiante» (se usa al generar los documentos
+// y al reimprimir una matrícula desde el panel)
+function htmlFichaImpresa(f){
+  return `
     <div class="print-memo ficha-print">
       <div class="encabezado encabezado-ficha">
         <img src="${LOGO_SRC}" alt="Logo">
         <div>
           <div class="colegio">${NOMBRE_COLEGIO}</div>
-          <div class="sub">Proceso de Matrícula 2027 — Ficha ${fichaActual.folio}</div>
+          <div class="sub">Proceso de Matrícula 2027 — Ficha ${f.folio}</div>
         </div>
       </div>
-      ${fichaAntecedentesInterior(fichaActual)}
+      ${fichaAntecedentesInterior(f)}
       <div class="pie-pagina">
         <img src="${LOGO_SRC}" alt="Logo">
-        <div class="pie-texto">${NOMBRE_COLEGIO}<br>Proceso de Matrícula 2027 — Ficha ${fichaActual.folio}</div>
+        <div class="pie-texto">${NOMBRE_COLEGIO}<br>Proceso de Matrícula 2027 — Ficha ${f.folio}</div>
       </div>
     </div>`;
 }
 
 function imprimirMemos(){
+  renderMemos();
   window.print();
   yaImprimio = true;
   setTimeout(()=>abrir("ovFirma"), 400);
@@ -839,10 +846,12 @@ function renderTablaAdmin(lista){
         <td>${r.estudiante.nombre ?? "—"}</td><td>${r.estudiante.rut ?? "—"}</td>
         <td>${r.tipo==="antiguo" ? (r.estudiante.cursoMatricula ?? r.estudiante.cursoAnterior ?? "—") : (r.estudiante.procedencia ?? "—")}</td>
         <td>${r.apoderado.nombre ?? "—"}</td><td>${r.apoderado.celular ?? "—"}</td>
-        <td style="white-space:nowrap">
+        <td><div class="acciones">
+          <button class="btn-del" title="Imprimir ficha de matrícula" onclick="imprimirFichaMatricula('${r._key}')">🖨️</button>
           <button class="btn-del" title="Cambiar N° de ficha" onclick="abrirFolioFicha('${r._key}')">#</button>
           <button class="btn-del" title="Editar matrícula" onclick="editarMatricula('${r._key}')">✏️</button>
           <button class="btn-del" title="Eliminar matrícula" onclick="confirmarEliminar('${r._key}','${(r.estudiante.nombre ?? "este estudiante").replace(/'/g,"\\'")}')">🗑️</button>
+</div>
         </td>
       </tr>`).join("") : (registros.length ? `<tr><td colspan="9">Ninguna matrícula coincide con el filtro.</td></tr>` : `<tr><td colspan="9">Aún no hay matrículas registradas.</td></tr>`);
 }
@@ -1031,4 +1040,18 @@ if (MODO_APODERADO){
 } else if (claveInterna){
   // Había una sesión en esta pestaña: se vuelve a comprobar con el servidor
   entrarConClave(claveInterna, true).then(ok => { if (!ok) cerrarAcceso(); });
+}
+
+/* ---------- Reimprimir la ficha de una matrícula desde el panel ---------- */
+function imprimirFichaMatricula(key){
+  const r = registros.find(x => x._key === key);
+  if (!r) return;
+  const f = { folio: r.folio, fechaRegistro: r.fechaRegistro, tipo: r.tipo,
+              estudiante: r.estudiante || {}, apoderado: r.apoderado || {}, suplente: r.suplente || null };
+  document.getElementById("printArea").innerHTML = htmlFichaImpresa(f);
+  // el nombre del archivo PDF sale del título de la página
+  const tituloOriginal = document.title;
+  document.title = ("Ficha " + f.folio + " - " + (f.estudiante.nombre || "")).trim();
+  window.addEventListener("afterprint", () => { document.title = tituloOriginal; }, { once: true });
+  window.print();
 }
