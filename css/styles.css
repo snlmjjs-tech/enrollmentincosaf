@@ -188,6 +188,7 @@ table.lista tbody tr:hover td{background:var(--azul-claro)}
 .pill.nuevo{background:var(--dorado-suave);color:#8a6410}
 .pill.antiguo{background:var(--azul-claro);color:var(--azul)}
 .tabla-scroll{overflow-x:auto;margin-bottom:30px}
+.acciones{display:flex;flex-wrap:wrap;gap:5px;width:84px}
 .btn-del{background:none;border:1px solid var(--linea);border-radius:10px;padding:5px 9px;cursor:pointer;font-size:.95rem;line-height:1;transition:.2s}
 .btn-del:hover{border-color:var(--error);background:#fff5f4;transform:scale(1.06)}
 .contador{font-size:.82rem;color:var(--gris)}
@@ -203,9 +204,9 @@ table.lista tbody tr:hover td{background:var(--azul-claro)}
 /* ---------- Impresión ---------- */
 #printArea{display:none}
 @media print{
-  body *{visibility:hidden}
-  #printArea,#printArea *{visibility:visible}
-  #printArea{display:block;position:absolute;top:0;left:0;width:100%}
+  /* al imprimir solo queda el área de impresión (lo demás se oculta de verdad, sin ocupar hojas) */
+  body > *:not(#printArea){display:none!important}
+  #printArea{display:block;width:100%}
   .print-memo{page-break-after:always;padding:2.2cm 2cm;font-family:'Source Serif 4',Georgia,serif;font-size:12pt;line-height:1.8;color:#000}
   .print-memo:last-child{page-break-after:auto}
   .print-memo .encabezado{text-align:center;margin-bottom:26pt}
