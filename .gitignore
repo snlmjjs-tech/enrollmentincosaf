@@ -1,0 +1,7 @@
+
+# Página de pruebas generada por herramientas/preparar-prueba.js y archivos locales con configuración o claves
+.prueba-local/
+*.local
+*.local.*
+.env
+.env.*

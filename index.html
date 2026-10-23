@@ -2,17 +2,18 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://mtlunrefaxsagfkphvvw.supabase.co https://script.google.com https://script.googleusercontent.com; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Matrícula INCOSAF 2027</title>
 <link rel="icon" type="image/png" href="assets/logo.png">
 <meta name="theme-color" content="#f5f5f7">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Archivo:wdth,wght@75..125,400..800&family=Source+Serif+4:opsz,wght@8..60,400..700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<link rel="stylesheet" href="css/styles.css?v=20261031">
+<link rel="stylesheet" href="css/styles.css?v=20261102">
+<script src="vendor/supabase-js-2.118.0.min.js"></script>
+<script src="vendor/xlsx-0.18.5.full.min.js"></script>
+<script src="vendor/qrcode-1.0.0.js"></script>
+<script src="vendor/jspdf-4.2.1.umd.min.js"></script>
 </head>
 <body>
 
@@ -56,23 +57,23 @@
       <p>Elige el tipo de estudiante para comenzar la ficha de matrícula.</p>
     </div>
     <div class="home-cards">
-      <button class="card-btn" onclick="iniciarFicha('nuevo')">
+      <button class="card-btn" data-click="iniciarFicha" data-args='["nuevo"]'>
         <span class="tag">Ingreso 2027</span>
         <h2>Estudiante nuevo</h2>
         <p>Estudiantes que provienen de otro establecimiento y se incorporan al instituto.</p>
       </button>
-      <button class="card-btn" onclick="iniciarFicha('antiguo')">
+      <button class="card-btn" data-click="iniciarFicha" data-args='["antiguo"]'>
         <span class="tag">Continuidad</span>
         <h2>Estudiante antiguo</h2>
         <p>Estudiantes que ya pertenecen al establecimiento y renuevan su matrícula.</p>
       </button>
     </div>
     <div class="pre-row">
-      <button class="btn btn-gold" onclick="abrirCargarCodigo()">🔑 Cargar pre-matrícula con código</button>
-      <button class="btn btn-ghost" onclick="mostrarQR()">📱 Código QR para apoderados</button>
+      <button class="btn btn-gold" data-click="abrirCargarCodigo">🔑 Cargar pre-matrícula con código</button>
+      <button class="btn btn-ghost" data-click="mostrarQR">📱 Código QR para apoderados</button>
     </div>
-    <button class="admin-link" onclick="pedirClaveAdmin()">Panel de matrículas registradas (encargados)</button>
-    <button class="admin-link" id="btnSalir" onclick="cerrarAcceso()">Cerrar acceso</button>
+    <button class="admin-link" data-click="pedirClaveAdmin">Panel de matrículas registradas (encargados)</button>
+    <button class="admin-link" id="btnSalir" data-click="cerrarAcceso">Cerrar acceso</button>
   </section>
 
   <!-- ============ FORMULARIO ============ -->
@@ -82,12 +83,22 @@
       <div class="step on"><b>Ítem 2</b>Apoderado titular</div>
       <div class="step on"><b>Ítem 3</b>Apoderado suplente (opcional)</div>
     </div>
-    <div id="bannerErr" class="banner-err">Hay campos obligatorios sin completar o con errores. Revisa los campos marcados en rojo.</div>
+    <div id="bannerErr" class="banner-err"><span id="bannerTexto">Hay campos obligatorios sin completar o con errores. Revisa los campos marcados en rojo.</span><ul id="bannerDetalle"></ul></div>
 
     <form id="ficha" novalidate>
-      <!-- Ítem 1 -->
-      <fieldset>
-        <legend><span>Ítem 1</span> Datos del estudiante — <em id="tipoLabel"></em></legend>
+      <div class="trampa" aria-hidden="true">
+        <label>No llenar este campo <input type="text" id="sitio_web" name="sitio_web" tabindex="-1" autocomplete="off"></label>
+      </div>
+      <!-- Ítem 1: estudiante 1. Los demás estudiantes de la solicitud se crean copiando este bloque (js/app.js) -->
+      <fieldset id="est1" class="est-bloque" data-n="1">
+        <legend><span>Ítem 1</span> <b class="est-titulo">Datos del estudiante</b> — <em id="tipoLabel"></em></legend>
+        <div class="field tipo-sel">
+          <label>Condición del estudiante <span class="req">*</span></label>
+          <div class="radio-row">
+            <label class="radio-pill"><input type="radio" name="tipo_1" value="nuevo" data-change="cambiarTipo" data-args='[1]'><span>Estudiante nuevo</span></label>
+            <label class="radio-pill"><input type="radio" name="tipo_1" value="antiguo" data-change="cambiarTipo" data-args='[1]'><span>Estudiante antiguo</span></label>
+          </div>
+        </div>
         <div class="grid c2">
           <div class="field" style="grid-column:1/-1">
             <label>Nombre completo del estudiante <span class="req">*</span></label>
@@ -131,6 +142,16 @@
             <label>Colegio de procedencia <span class="req">*</span></label>
             <input type="text" id="e_procedencia">
           </div>
+          <div class="field solo-nuevo" style="grid-column:1/-1">
+            <label>Curso al que ingresa (2027) <span class="opt">(opcional)</span></label>
+            <select id="e_cursoNuevo">
+              <option value="">— Selecciona el nivel —</option>
+              <option value="1° Medio">1° Medio</option>
+              <option value="2° Medio">2° Medio</option>
+              <option value="3° Medio">3° Medio</option>
+              <option value="4° Medio">4° Medio</option>
+            </select>
+          </div>
 
           <!-- Solo estudiante ANTIGUO -->
           <div class="field solo-antiguo" style="grid-column:1/-1">
@@ -151,8 +172,8 @@
           <div class="field" style="grid-column:1/-1">
             <label>¿Ha repetido algún curso? <span class="req">*</span></label>
             <div class="radio-row">
-              <label class="radio-pill"><input type="radio" name="rep" value="si" onchange="toggleSub('rep')"><span>Sí</span></label>
-              <label class="radio-pill"><input type="radio" name="rep" value="no" onchange="toggleSub('rep')"><span>No</span></label>
+              <label class="radio-pill"><input type="radio" name="rep" value="si" data-change="toggleSub" data-args='["rep"]'><span>Sí</span></label>
+              <label class="radio-pill"><input type="radio" name="rep" value="no" data-change="toggleSub" data-args='["rep"]'><span>No</span></label>
             </div>
             <div id="sub_rep" class="subfields">
               <div class="grid c2">
@@ -166,8 +187,8 @@
           <div class="field" style="grid-column:1/-1">
             <label>¿Pertenece al Programa de Integración Escolar (PIE)? <span class="req">*</span></label>
             <div class="radio-row">
-              <label class="radio-pill"><input type="radio" name="pie" value="si" onchange="toggleSub('pie')"><span>Sí</span></label>
-              <label class="radio-pill"><input type="radio" name="pie" value="no" onchange="toggleSub('pie')"><span>No</span></label>
+              <label class="radio-pill"><input type="radio" name="pie" value="si" data-change="toggleSub" data-args='["pie"]'><span>Sí</span></label>
+              <label class="radio-pill"><input type="radio" name="pie" value="no" data-change="toggleSub" data-args='["pie"]'><span>No</span></label>
             </div>
             <div id="sub_pie" class="subfields">
               <div class="field"><label>Diagnóstico que presenta <span class="req">*</span></label><input type="text" id="e_pieDiag"></div>
@@ -185,8 +206,8 @@
           <div class="field" style="grid-column:1/-1">
             <label>¿Presenta algún problema de salud? <span class="req">*</span></label>
             <div class="radio-row">
-              <label class="radio-pill"><input type="radio" name="salud" value="si" onchange="toggleSub('salud')"><span>Sí</span></label>
-              <label class="radio-pill"><input type="radio" name="salud" value="no" onchange="toggleSub('salud')"><span>No</span></label>
+              <label class="radio-pill"><input type="radio" name="salud" value="si" data-change="toggleSub" data-args='["salud"]'><span>Sí</span></label>
+              <label class="radio-pill"><input type="radio" name="salud" value="no" data-change="toggleSub" data-args='["salud"]'><span>No</span></label>
             </div>
             <div id="sub_salud" class="subfields">
               <div class="field"><label>¿Qué problema de salud presenta? <span class="req">*</span></label><input type="text" id="e_saludDet"></div>
@@ -199,6 +220,13 @@
           </div>
         </div>
       </fieldset>
+
+      <!-- Estudiantes 2 a 5 (se agregan con el botón) -->
+      <div id="estudiantesExtra"></div>
+      <div class="est-add" id="estAdd">
+        <button type="button" class="btn btn-ghost" id="btnAddEst" data-click="anadirEstudiante">+ Añadir otro estudiante</button>
+        <p class="hint" id="estAddHint">Si el apoderado tiene más hijos, puede matricularlos en esta misma solicitud (hasta 5). Los datos del apoderado se piden una sola vez.</p>
+      </div>
 
       <!-- Ítem 2 -->
       <fieldset>
@@ -283,7 +311,7 @@
           </div>
           <div class="field" style="grid-column:1/-1">
             <label>Situación laboral <span class="opt">(opcional)</span></label>
-            <select id="a_laboral" onchange="actualizarLugarTrabajo()">
+            <select id="a_laboral" data-change="actualizarLugarTrabajo">
               <option value="">— Selecciona —</option>
               <option>Trabaja jornada completa (todo el día)</option>
               <option>Trabaja jornada parcial (medio día o algunas horas al día)</option>
@@ -307,8 +335,8 @@
         <legend><span>Ítem 3</span> Apoderado suplente (opcional)</legend>
         <div class="field" style="margin-bottom:14px">
           <div class="radio-row">
-            <label class="radio-pill"><input type="radio" name="sup" value="si" onchange="toggleSub('sup')"><span>Registrar suplente</span></label>
-            <label class="radio-pill"><input type="radio" name="sup" value="no" checked onchange="toggleSub('sup')"><span>Sin suplente</span></label>
+            <label class="radio-pill"><input type="radio" name="sup" value="si" data-change="toggleSub" data-args='["sup"]'><span>Registrar suplente</span></label>
+            <label class="radio-pill"><input type="radio" name="sup" value="no" checked data-change="toggleSub" data-args='["sup"]'><span>Sin suplente</span></label>
           </div>
         </div>
         <div id="sub_sup" class="subfields">
@@ -349,10 +377,21 @@
       </fieldset>
 
       <div class="form-actions">
-        <button type="button" class="btn btn-ghost" onclick="volverInicio()">← Cancelar</button>
+        <button type="button" class="btn btn-ghost" data-click="volverInicio">← Cancelar</button>
         <button type="submit" class="btn btn-pri">Generar documentos de matrícula →</button>
       </div>
     </form>
+  </section>
+
+  <!-- ============ RESUMEN (solicitud con varios estudiantes) ============ -->
+  <section id="scr-resumen" class="screen">
+    <div class="memo-intro"><b>Revisa la solicitud antes de continuar.</b> Verifica los datos de cada estudiante. Si algo está mal, vuelve a editar: no se pierde nada de lo escrito.</div>
+    <div id="resumenApoderado"></div>
+    <div id="resumenEstudiantes"></div>
+    <div class="form-actions">
+      <button type="button" class="btn btn-ghost" data-click="mostrar" data-args='["scr-form"]'>← Volver a editar</button>
+      <button type="button" class="btn btn-pri" id="btnConfirmarResumen" data-click="confirmarResumen">Confirmar y generar documentos →</button>
+    </div>
   </section>
 
   <!-- ============ MEMOS ============ -->
@@ -363,8 +402,8 @@
     </div>
     <div id="memosPantalla"></div>
     <div class="memo-actions">
-      <button class="btn btn-ghost" onclick="mostrar('scr-form')">← Volver a la ficha</button>
-      <button class="btn btn-gold" onclick="imprimirMemos()">🖨️ Imprimir documentos</button>
+      <button class="btn btn-ghost" data-click="mostrar" data-args='["scr-form"]'>← Volver a la ficha</button>
+      <button class="btn btn-gold" data-click="imprimirMemos">🖨️ Imprimir documentos</button>
     </div>
   </section>
 
@@ -374,11 +413,14 @@
       <div class="check">✓</div>
       <h2>Matrícula registrada</h2>
       <div class="folio" id="folioTxt"></div>
+      <div id="doneLista"></div>
       <p id="doneMail"></p>
+      <button class="btn btn-gold" id="btnReintentarCorreo" style="display:none" data-click="reintentarCorreo">✉️ Reintentar el envío del correo</button>
+      <p id="doneAdvertencia" class="hint err"></p>
       <p id="doneSpam" style="font-size:.8rem">Si el apoderado no ve el correo, debe revisar la carpeta de <b>spam</b> o correo no deseado.</p>
       <p>Los datos quedaron guardados en la base de datos central y ya están disponibles para el equipo del establecimiento.</p>
       <br>
-      <button class="btn btn-pri" onclick="nuevaMatricula()">Registrar otra matrícula</button>
+      <button class="btn btn-pri" data-click="nuevaMatricula">Registrar otra matrícula</button>
     </div>
   </section>
 
@@ -402,37 +444,37 @@
     <div class="admin-bar">
       <h2>Matrículas registradas 2027</h2>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button class="btn btn-ghost" onclick="volverInicio()">← Inicio</button>
-        <button class="btn btn-gold" id="btnDescargarExcel" onclick="descargarExcel()">⬇️ Descargar Excel</button>
-        <button class="btn btn-ghost" onclick="descargarExcelLibro()">📘 Excel formato libro digital</button>
-        <button class="btn btn-ghost" onclick="abrirContadorFolio()">🔢 Contador de folio</button>
+        <button class="btn btn-ghost" data-click="volverInicio">← Inicio</button>
+        <button class="btn btn-gold" id="btnDescargarExcel" data-click="descargarExcel">⬇️ Descargar Excel</button>
+        <button class="btn btn-ghost" data-click="descargarExcelLibro">📘 Excel formato libro digital</button>
+        <button class="btn btn-ghost" data-click="abrirContadorFolio">🔢 Contador de folio</button>
       </div>
     </div>
     <div class="admin-filtros">
-      <input type="text" id="fBusqueda" placeholder="🔎 Buscar por nombre, RUT o apoderado…" oninput="aplicarFiltrosAdmin()">
-      <select id="fTipo" onchange="aplicarFiltrosAdmin()">
+      <input type="text" id="fBusqueda" placeholder="🔎 Buscar por nombre, RUT o apoderado…" data-input="aplicarFiltrosAdmin">
+      <select id="fTipo" data-change="aplicarFiltrosAdmin">
         <option value="">Todos los tipos</option>
         <option value="nuevo">Estudiante nuevo</option>
         <option value="antiguo">Estudiante antiguo</option>
       </select>
-      <select id="fCurso" onchange="aplicarFiltrosAdmin()">
+      <select id="fCurso" data-change="aplicarFiltrosAdmin">
         <option value="">Todos los cursos</option>
       </select>
       <div class="filtro-fecha">
         <label for="fDesde">Desde</label>
-        <input type="date" id="fDesde" onchange="aplicarFiltrosAdmin()">
+        <input type="date" id="fDesde" data-change="aplicarFiltrosAdmin">
       </div>
       <div class="filtro-fecha">
         <label for="fHasta">Hasta</label>
-        <input type="date" id="fHasta" onchange="aplicarFiltrosAdmin()">
+        <input type="date" id="fHasta" data-change="aplicarFiltrosAdmin">
       </div>
-      <button type="button" class="btn btn-ghost" onclick="limpiarFiltrosAdmin()">Limpiar filtros</button>
+      <button type="button" class="btn btn-ghost" data-click="limpiarFiltrosAdmin">Limpiar filtros</button>
     </div>
     <p class="contador" id="contador"></p><br>
     <div class="tabla-scroll">
       <table class="lista">
-        <thead><tr><th>Ficha</th><th>Fecha</th><th>Tipo</th><th>Estudiante</th><th>RUT</th><th>Curso 2027 / Procedencia</th><th>Apoderado</th><th>Celular</th><th></th></tr></thead>
-        <tbody id="tbodyAdmin"><tr><td colspan="9">Cargando…</td></tr></tbody>
+        <thead><tr><th>Ficha</th><th>Fecha</th><th>Tipo</th><th>Estudiante</th><th>RUT</th><th>Curso 2027 / Procedencia</th><th>Apoderado</th><th>Celular</th><th>Solicitud / correo</th><th></th></tr></thead>
+        <tbody id="tbodyAdmin"><tr><td colspan="10">Cargando…</td></tr></tbody>
       </table>
     </div>
   </section>
@@ -444,8 +486,8 @@
     <h3>Firma del apoderado</h3>
     <p><b>El apoderado debe firmar los tres documentos impresos para seguir con el proceso.</b><br><br>¿Deseas finalizar la matrícula? Al finalizar, los datos se guardarán en la base de datos y se enviará un comprobante al correo del apoderado.</p>
     <div class="modal-btns">
-      <button class="btn btn-ghost" onclick="cerrar('ovFirma')">Aún no</button>
-      <button class="btn btn-pri" id="btnFinalizar" onclick="finalizarMatricula()">Finalizar ✓</button>
+      <button class="btn btn-ghost" data-click="cerrar" data-args='["ovFirma"]'>Aún no</button>
+      <button class="btn btn-pri" id="btnFinalizar" data-click="finalizarMatricula">Finalizar ✓</button>
     </div>
   </div>
 </div>
@@ -456,8 +498,8 @@
     <p>Ingresa la clave del panel de matrículas.</p>
     <input type="password" id="inputClave" placeholder="Clave">
     <div class="modal-btns">
-      <button class="btn btn-ghost" onclick="cerrar('ovClave')">Cancelar</button>
-      <button class="btn btn-pri" onclick="validarClave()">Entrar</button>
+      <button class="btn btn-ghost" data-click="cerrar" data-args='["ovClave"]'>Cancelar</button>
+      <button class="btn btn-pri" data-click="validarClave">Entrar</button>
     </div>
   </div>
 </div>
@@ -465,25 +507,25 @@
 <div class="overlay" id="ovQR">
   <div class="modal" style="text-align:center">
     <h3>Pre-matrícula para apoderados</h3>
-    <p>El apoderado escanea el código <b>o</b> abre el link, completa los datos de su pupilo(a) con calma, y recibe un <b>código de 4 dígitos</b> que presenta en el mesón.</p>
+    <p>El apoderado escanea el código <b>o</b> abre el link, completa los datos de su pupilo(a) con calma, y recibe un <b>código</b> que presenta en el mesón.</p>
     <p style="font-size:.8rem;color:var(--gris)">Si varios apoderados están juntos, es más fácil que cada uno abra el link desde su propio celular en vez de turnarse para escanear el mismo QR.</p>
     <div id="qrBox" style="display:flex;justify-content:center;margin-bottom:14px"></div>
     <div style="background:var(--fondo,#f4f4f4);border:1px solid var(--linea);border-radius:8px;padding:10px;margin-bottom:14px">
       <a id="qrUrl" href="#" target="_blank" rel="noopener" style="font-size:.85rem;word-break:break-all;display:block;margin-bottom:8px"></a>
-      <button type="button" class="btn btn-ghost" id="btnCopiarLink" onclick="copiarLinkApoderado()" style="font-size:.8rem">📋 Copiar link</button>
+      <button type="button" class="btn btn-ghost" id="btnCopiarLink" data-click="copiarLinkApoderado" style="font-size:.8rem">📋 Copiar link</button>
     </div>
-    <div class="modal-btns"><button class="btn btn-pri" onclick="cerrar('ovQR')">Cerrar</button></div>
+    <div class="modal-btns"><button class="btn btn-pri" data-click="cerrar" data-args='["ovQR"]'>Cerrar</button></div>
   </div>
 </div>
 
 <div class="overlay" id="ovCodigo">
   <div class="modal">
     <h3>Cargar pre-matrícula</h3>
-    <p>Ingresa el código de 4 dígitos que trae el apoderado.</p>
-    <input type="text" id="inputCodigo" maxlength="4" inputmode="numeric" placeholder="Ej: 4821" style="text-align:center;font-size:1.5rem;letter-spacing:8px">
+    <p>Ingresa el código que trae el apoderado.</p>
+    <input type="text" id="inputCodigo" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Ej: K7M-4P9" style="text-align:center;font-size:1.5rem;letter-spacing:6px;text-transform:uppercase">
     <div class="modal-btns">
-      <button class="btn btn-ghost" onclick="cerrar('ovCodigo')">Cancelar</button>
-      <button class="btn btn-pri" id="btnBuscarCodigo" onclick="cargarPrematricula()">Cargar datos</button>
+      <button class="btn btn-ghost" data-click="cerrar" data-args='["ovCodigo"]'>Cancelar</button>
+      <button class="btn btn-pri" id="btnBuscarCodigo" data-click="cargarPrematricula">Cargar datos</button>
     </div>
   </div>
 </div>
@@ -493,8 +535,19 @@
     <h3>Eliminar matrícula</h3>
     <p>¿Confirmas eliminar la matrícula de <b id="nombreEliminar"></b>? Esta acción no se puede deshacer.</p>
     <div class="modal-btns">
-      <button class="btn btn-ghost" onclick="cerrar('ovEliminar')">Cancelar</button>
-      <button class="btn" style="background:var(--error);color:#fff" id="btnConfirmarEliminar" onclick="eliminarMatricula()">Eliminar definitivamente</button>
+      <button class="btn btn-ghost" data-click="cerrar" data-args='["ovEliminar"]'>Cancelar</button>
+      <button class="btn" style="background:var(--error);color:#fff" id="btnConfirmarEliminar" data-click="eliminarMatricula">Eliminar definitivamente</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="ovQuitarEst">
+  <div class="modal">
+    <h3>Quitar estudiante</h3>
+    <p>¿Quitar la ficha de <b id="nombreQuitarEst"></b> de esta solicitud? Se perderán los datos escritos en esa ficha. Los demás estudiantes no se modifican.</p>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" data-click="cerrar" data-args='["ovQuitarEst"]'>Cancelar</button>
+      <button class="btn" style="background:var(--error);color:#fff" data-click="confirmarQuitarEstudiante">Quitar estudiante</button>
     </div>
   </div>
 </div>
@@ -505,8 +558,8 @@
     <p>Define el número de la <b>próxima ficha</b> que se genere. Por ejemplo, escribe 1 para empezar de nuevo. No puede ser menor o igual al de una ficha ya guardada: para eso, elimina esas matrículas primero o cambia su número.</p>
     <input type="number" id="inputSiguienteFolio" min="1" step="1" style="text-align:center;font-size:1.5rem">
     <div class="modal-btns">
-      <button class="btn btn-ghost" onclick="cerrar('ovContadorFolio')">Cancelar</button>
-      <button class="btn btn-pri" id="btnGuardarContador" onclick="guardarContadorFolio()">Guardar</button>
+      <button class="btn btn-ghost" data-click="cerrar" data-args='["ovContadorFolio"]'>Cancelar</button>
+      <button class="btn btn-pri" id="btnGuardarContador" data-click="guardarContadorFolio">Guardar</button>
     </div>
   </div>
 </div>
@@ -517,8 +570,8 @@
     <p>Matrícula de <b id="nombreFolioFicha"></b>. El nuevo número no puede estar en uso por otra ficha.</p>
     <input type="number" id="inputFolioFicha" min="1" step="1" style="text-align:center;font-size:1.5rem">
     <div class="modal-btns">
-      <button class="btn btn-ghost" onclick="cerrar('ovFolioFicha')">Cancelar</button>
-      <button class="btn btn-pri" id="btnGuardarFolioFicha" onclick="guardarFolioFicha()">Guardar</button>
+      <button class="btn btn-ghost" data-click="cerrar" data-args='["ovFolioFicha"]'>Cancelar</button>
+      <button class="btn btn-pri" id="btnGuardarFolioFicha" data-click="guardarFolioFicha">Guardar</button>
     </div>
   </div>
 </div>
@@ -527,14 +580,14 @@
   <div class="modal">
     <h3 id="avisoTitulo"></h3>
     <p id="avisoTexto"></p>
-    <div class="modal-btns"><button class="btn btn-pri" onclick="cerrar('ovAviso')">Entendido</button></div>
+    <div class="modal-btns"><button class="btn btn-pri" data-click="cerrar" data-args='["ovAviso"]'>Entendido</button></div>
   </div>
 </div>
 
 <!-- Área de impresión -->
 <div id="printArea"></div>
 
-<script src="js/app.js?v=20261031"></script>
-<script src="js/ui.js?v=20261031"></script>
+<script src="js/app.js?v=20261102"></script>
+<script src="js/ui.js?v=20261102"></script>
 </body>
 </html>
