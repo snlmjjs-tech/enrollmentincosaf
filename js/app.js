@@ -15,11 +15,10 @@ LOGO_IMG.src = LOGO_SRC;
 const SUPABASE_URL = "https://mtlunrefaxsagfkphvvw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_bjKNRfhy3hQgXnE8wzvDSw_6Wpfu1CI"; // clave pública (publishable): segura en el navegador porque las tablas no son accesibles directamente
 
-// 2) Envío automático del comprobante al apoderado (Google Apps Script + Gmail, gratis)
-//    Crea un proyecto en script.google.com, pega el código del script, despliega como
-//    "Web app" (acceso: Anyone) y pega aquí la URL que termina en /exec y la clave secreta.
+// 2) Envío del comprobante al apoderado (Google Apps Script + Gmail).
+//    Aquí va SOLO la dirección del script. No hay ningún secreto en este archivo: el script comprueba
+//    que quien lo llama tenga una sesión de funcionario válida (ver apps-script/Code.gs).
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzFw8rbYDDGh9ZDQ5oC_sHcwnnP1BnOuWFzkKrXtaOaaktPtVRnnbFhcFL4jrWMU8fP/exec";
-const APPS_SCRIPT_SECRETO = "ZZWBOa92quuP2qK3la7vVYhc";
 /* ========================================================== */
 
 let sb = null;
@@ -29,24 +28,60 @@ try {
   }
 } catch(e){ console.error("Supabase:", e); }
 
+/* ---------- Seguridad: texto seguro en la página ----------
+   Todo dato que viene de personas (nombres, direcciones, observaciones, mensajes del servidor…) se trata
+   como TEXTO. Nunca se inserta como HTML sin pasar por esc() o por la plantilla h`...`, que escapa
+   automáticamente cada valor interpolado. */
+class Seguro { constructor(t){ this.t = t; } toString(){ return this.t; } }
+const ESCAPES = { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" };
+function esc(v){ return String(v ?? "").replace(/[&<>"']/g, c => ESCAPES[c]); }
+function h(partes, ...valores){
+  let out = partes[0];
+  valores.forEach((v, i) => {
+    const t = v instanceof Seguro ? v.t
+            : Array.isArray(v) ? v.map(x => x instanceof Seguro ? x.t : esc(x)).join("")
+            : esc(v);
+    out += t + partes[i + 1];
+  });
+  return new Seguro(out);
+}
+// Crea un elemento con texto seguro (para armar tablas y listas sin innerHTML)
+function el(etiqueta, props = {}, ...hijos){
+  const e = document.createElement(etiqueta);
+  for (const [k, v] of Object.entries(props)){
+    if (k === "texto") e.textContent = v;
+    else if (k === "datos") for (const [d, dv] of Object.entries(v)) e.dataset[d] = dv;
+    else e.setAttribute(k, v);
+  }
+  hijos.forEach(x => e.append(x));
+  return e;
+}
+
+// Mensajes del servidor que sí se muestran tal cual (están escritos para el usuario). Cualquier otro
+// error de la base se registra en la consola y al usuario se le muestra un mensaje general.
+const MENSAJES_SERVIDOR = /(folio_invalido|folio_en_uso|folio_duplicado|dato_invalido|demasiados_intentos|demasiadas_solicitudes|solicitud_invalida): (.*)/s;
+
 // Llama a una función de la base (ver supabase/schema.sql) y lanza un Error legible si falla
 async function rpc(nombre, args){
   if (!sb) throw new Error("Supabase no está configurado. Pega la URL y la clave anon al inicio de js/app.js.");
   const { data, error } = await sb.rpc(nombre, args || {});
   if (error) {
-    if (/clave_incorrecta/.test(error.message)) throw new Error("La clave no es válida o cambió. Cierra el acceso y vuelve a ingresarla.");
-    const m = /(folio_invalido|folio_en_uso|folio_duplicado): (.*)/.exec(error.message);
-    if (m) throw new Error(m[2]);
-    throw new Error(error.message);
+    const msg = String(error.message || "");
+    if (/clave_incorrecta/.test(msg)) throw new Error("La sesión no es válida o venció. Cierra el acceso y vuelve a ingresar la clave.");
+    const m = MENSAJES_SERVIDOR.exec(msg);
+    if (m) throw new Error(m[2].trim());
+    if (/sin_codigos_disponibles/.test(msg)) throw new Error("No hay códigos disponibles por ahora. Acércate al mesón de matrícula.");
+    console.error("Error del servidor:", error);
+    throw new Error("Ocurrió un problema al comunicarse con el servidor. Inténtalo nuevamente en unos minutos.");
   }
   return data;
 }
-// Clave de encargados ingresada en esta sesión (solo en memoria; el servidor la valida en cada operación)
-let claveAdmin = null;
-// Clave interna (inspectores) ingresada en la pantalla de entrada. Se guarda solo en esta pestaña
-// (sessionStorage): se borra al cerrar la pestaña o al pulsar «Cerrar acceso».
-let claveInterna = null;
-try{ claveInterna = sessionStorage.getItem("claveInterna"); }catch(e){}
+// Sesiones. Las claves se cambian por un token al ingresar; la clave no se guarda ni se vuelve a enviar.
+//  · tokenAdmin: panel de encargados (solo en memoria; dura 3 horas).
+//  · tokenInterno: funcionarios (se guarda solo en esta pestaña; dura 12 horas).
+let tokenAdmin = null;
+let tokenInterno = null;
+try{ tokenInterno = sessionStorage.getItem("tokenInterno"); }catch(e){}
 
 const correoListo = !APPS_SCRIPT_URL.includes("PEGA_AQUI");
 
@@ -62,12 +97,13 @@ let editandoOriginal = null;
 
 /* ---------- Nómina de alumnos 2026 (autocompletar comuna de estudiantes antiguos) ---------- */
 let nomina2026 = null;
+// ⚠️ Este archivo se serviría públicamente desde el sitio: NO lo publiques con datos reales de estudiantes.
+//    (La búsqueda de estudiantes antiguos debería hacerse en el servidor, no con un archivo público.)
 fetch("nomina2026.json").then(r => r.ok ? r.json() : null).then(datos => {
   if (!datos) return;
   nomina2026 = datos;
   const dl = document.getElementById("listaNomina2026");
-  const opciones = Object.values(datos).map(a => `<option value="${a.nombre}">`).join("");
-  dl.innerHTML = opciones;
+  dl.replaceChildren(...Object.values(datos).map(a => el("option", { value: String(a.nombre ?? "") })));
 }).catch(err => console.error("Nómina 2026:", err));
 
 function buscarEnNomina(){
@@ -119,7 +155,13 @@ function mostrar(id){
 }
 function cerrar(id){ document.getElementById(id).classList.remove("show"); }
 function abrir(id){ document.getElementById(id).classList.add("show"); }
-function aviso(t,x){ document.getElementById("avisoTitulo").textContent=t; document.getElementById("avisoTexto").innerHTML=x; abrir("ovAviso"); }
+// Muestra un aviso. «x» es TEXTO (o un resultado de h`...` cuando necesita negritas).
+function aviso(t,x){
+  document.getElementById("avisoTitulo").textContent = t;
+  const cuerpo = document.getElementById("avisoTexto");
+  if (x instanceof Seguro) cuerpo.innerHTML = x.t; else cuerpo.textContent = String(x ?? "");
+  abrir("ovAviso");
+}
 
 function iniciarFicha(tipo){
   tipoEstudiante = tipo;
@@ -309,7 +351,7 @@ document.getElementById("ficha").addEventListener("submit", async e=>{
     const btnGuardar = e.target.querySelector('button[type="submit"]');
     btnGuardar.disabled = true; btnGuardar.textContent = "Guardando…";
     try{
-      await rpc("actualizar_matricula", { p_clave: claveAdmin, p_id: editandoKey, p_ficha: { ...editandoOriginal, ...datos } });
+      await rpc("actualizar_matricula", { p_clave: tokenAdmin, p_id: editandoKey, p_ficha: { ...editandoOriginal, ...datos } });
       aviso("Cambios guardados", "Se actualizaron los datos de la matrícula.");
       editandoKey = null;
       editandoOriginal = null;
@@ -333,11 +375,10 @@ document.getElementById("ficha").addEventListener("submit", async e=>{
   btnGenerar.disabled = true; btnGenerar.textContent = "Generando ficha…";
   let numeroFolio = null;
   try{
-    numeroFolio = String(await rpc("obtener_folio", { p_clave: claveInterna }));
+    numeroFolio = String(await rpc("obtener_folio", { p_clave: tokenInterno }));
   }catch(err){
     console.error("Folio:", err);
-    aviso("No se pudo generar el número de ficha",
-      "No fue posible pedir el folio a la base de datos. Revisa que Supabase esté configurado y que ejecutaste <code>supabase/schema.sql</code>.<br><br>Detalle técnico: " + err.message);
+    aviso("No se pudo generar el número de ficha", "No fue posible pedir el folio a la base de datos. " + err.message);
   }
   btnGenerar.disabled = false; btnGenerar.textContent = "Generar documentos de matrícula →";
   if (!numeroFolio) return; // no continuar sin folio válido
@@ -352,8 +393,10 @@ document.getElementById("ficha").addEventListener("submit", async e=>{
 async function guardarPrematricula(datos, btn){
   btn.disabled = true; btn.textContent = "Enviando…";
   try{
-    const codigo = await rpc("crear_prematricula", { p_datos: datos });
-    document.getElementById("codigoGrande").textContent = codigo;
+    // «_hp» es un campo trampa invisible: las personas lo dejan vacío, algunos robots lo llenan
+    const codigo = await rpc("crear_prematricula", { p_datos: { ...datos, _hp: document.getElementById("sitio_web").value } });
+    // 6 caracteres se muestran como XXX-XXX; los códigos antiguos de 4 dígitos se muestran igual
+    document.getElementById("codigoGrande").textContent = /^[A-Z2-9]{6}$/.test(codigo) ? codigo.slice(0,3) + "-" + codigo.slice(3) : codigo;
     mostrar("scr-codigo");
   }catch(err){
     aviso("No se pudo enviar", err.message);
@@ -370,13 +413,13 @@ function abrirCargarCodigo(){
 document.getElementById("inputCodigo").addEventListener("keydown",e=>{ if(e.key==="Enter") cargarPrematricula(); });
 
 async function cargarPrematricula(){
-  const codigo = document.getElementById("inputCodigo").value.trim();
-  if (!/^\d{4}$/.test(codigo)){ aviso("Código inválido","El código debe tener 4 dígitos."); return; }
+  const codigo = document.getElementById("inputCodigo").value.trim().toUpperCase().replace(/[\s-]/g, "");
+  if (!/^([0-9]{4}|[A-Z0-9]{6})$/.test(codigo)){ aviso("Código inválido","Escribe el código completo que trae el apoderado (4 dígitos o 6 caracteres)."); return; }
   const btn = document.getElementById("btnBuscarCodigo");
   btn.disabled = true; btn.textContent = "Buscando…";
   try{
-    const datos = await rpc("cargar_prematricula", { p_clave: claveInterna, p_codigo: codigo });
-    if (!datos){ aviso("Código no encontrado","No existe una pre-matrícula con el código <b>"+codigo+"</b>. Verifica con el apoderado."); return; }
+    const datos = await rpc("cargar_prematricula", { p_clave: tokenInterno, p_codigo: codigo });
+    if (!datos){ aviso("Código no encontrado", h`No existe una pre-matrícula con el código <b>${codigo}</b>. Verifica con el apoderado.`); return; }
     cerrar("ovCodigo");
     llenarFicha(datos);
     codigoPreCargado = codigo;
@@ -438,9 +481,9 @@ function editarMatricula(key){
 function mostrarQR(){
   const url = location.origin + location.pathname + "?apoderado";
   const box = document.getElementById("qrBox");
-  box.innerHTML = "";
+  box.replaceChildren();
   if (location.protocol === "file:"){
-    box.innerHTML = "<p style='font-size:.8rem;color:var(--error)'>⚠️ Estás abriendo el archivo localmente. El QR funcionará cuando la página esté subida a internet (GitHub Pages).</p>";
+    box.append(el("p", { style: "font-size:.8rem;color:var(--error)", texto: "⚠️ Estás abriendo el archivo localmente. El QR funcionará cuando la página esté subida a internet (GitHub Pages)." }));
   } else {
     new QRCode(box, { text: url, width: 200, height: 200 });
   }
@@ -471,17 +514,17 @@ function textosMemos(f){
   const hoy = new Date().toLocaleDateString("es-CL",{day:"numeric",month:"long",year:"numeric"});
   return [
     { titulo:"Autorización de uso de imagen",
-      cuerpo:`Yo, <b>${A.nombre}</b>, RUT <b>${A.rut}</b>, en mi calidad de apoderado(a) titular del(la) estudiante <b>${E.nombre}</b>, RUT <b>${E.rut}</b>, autorizo expresamente al <b>${NOMBRE_COLEGIO}</b> a captar, utilizar y difundir la imagen de mi pupilo(a) en fotografías y registros audiovisuales tomados en el contexto de actividades académicas, deportivas, culturales y extraprogramáticas del establecimiento, para ser publicados en medios institucionales tales como la página web oficial, redes sociales, murales, boletines y material de difusión educativa.<br><br>Esta autorización se otorga de manera gratuita y voluntaria, exclusivamente con fines educativos e institucionales, y tendrá vigencia durante el año escolar 2027. Declaro conocer que puedo revocarla en cualquier momento mediante comunicación escrita dirigida a la Dirección del establecimiento.` },
+      cuerpo:h`Yo, <b>${A.nombre}</b>, RUT <b>${A.rut}</b>, en mi calidad de apoderado(a) titular del(la) estudiante <b>${E.nombre}</b>, RUT <b>${E.rut}</b>, autorizo expresamente al <b>${NOMBRE_COLEGIO}</b> a captar, utilizar y difundir la imagen de mi pupilo(a) en fotografías y registros audiovisuales tomados en el contexto de actividades académicas, deportivas, culturales y extraprogramáticas del establecimiento, para ser publicados en medios institucionales tales como la página web oficial, redes sociales, murales, boletines y material de difusión educativa.<br><br>Esta autorización se otorga de manera gratuita y voluntaria, exclusivamente con fines educativos e institucionales, y tendrá vigencia durante el año escolar 2027. Declaro conocer que puedo revocarla en cualquier momento mediante comunicación escrita dirigida a la Dirección del establecimiento.` },
     { titulo:"Aceptación del Reglamento Interno",
-      cuerpo:`Yo, <b>${A.nombre}</b>, RUT <b>${A.rut}</b>, apoderado(a) titular del(la) estudiante <b>${E.nombre}</b>, RUT <b>${E.rut}</b>, declaro haber tomado conocimiento del <b>Reglamento Interno y de Convivencia Escolar</b> del <b>${NOMBRE_COLEGIO}</b>, disponible en el establecimiento y en sus medios oficiales, y manifiesto mi plena conformidad y adhesión a sus normas, protocolos, derechos y deberes.<br><br>Me comprometo, junto a mi pupilo(a), a respetar y cumplir sus disposiciones durante el año escolar 2027, colaborando con el establecimiento en la formación integral del(la) estudiante y en la sana convivencia de la comunidad educativa.` },
+      cuerpo:h`Yo, <b>${A.nombre}</b>, RUT <b>${A.rut}</b>, apoderado(a) titular del(la) estudiante <b>${E.nombre}</b>, RUT <b>${E.rut}</b>, declaro haber tomado conocimiento del <b>Reglamento Interno y de Convivencia Escolar</b> del <b>${NOMBRE_COLEGIO}</b>, disponible en el establecimiento y en sus medios oficiales, y manifiesto mi plena conformidad y adhesión a sus normas, protocolos, derechos y deberes.<br><br>Me comprometo, junto a mi pupilo(a), a respetar y cumplir sus disposiciones durante el año escolar 2027, colaborando con el establecimiento en la formación integral del(la) estudiante y en la sana convivencia de la comunidad educativa.` },
     { titulo:"Autorización de salidas pedagógicas",
-      cuerpo:`Yo, <b>${A.nombre}</b>, RUT <b>${A.rut}</b>, apoderado(a) titular del(la) estudiante <b>${E.nombre}</b>, RUT <b>${E.rut}</b>, autorizo a mi pupilo(a) a participar en las <b>salidas pedagógicas</b> organizadas por el <b>${NOMBRE_COLEGIO}</b> durante el año escolar 2027, dentro y fuera de la comuna, siempre que estas cuenten con la supervisión de docentes y/o asistentes de la educación del establecimiento y se realicen en el marco de los objetivos de aprendizaje del plan de estudios.<br><br>Declaro que seré oportunamente informado(a) de cada salida (fecha, lugar y horario) a través de los canales oficiales del establecimiento.` }
+      cuerpo:h`Yo, <b>${A.nombre}</b>, RUT <b>${A.rut}</b>, apoderado(a) titular del(la) estudiante <b>${E.nombre}</b>, RUT <b>${E.rut}</b>, autorizo a mi pupilo(a) a participar en las <b>salidas pedagógicas</b> organizadas por el <b>${NOMBRE_COLEGIO}</b> durante el año escolar 2027, dentro y fuera de la comuna, siempre que estas cuenten con la supervisión de docentes y/o asistentes de la educación del establecimiento y se realicen en el marco de los objetivos de aprendizaje del plan de estudios.<br><br>Declaro que seré oportunamente informado(a) de cada salida (fecha, lugar y horario) a través de los canales oficiales del establecimiento.` }
   ].map(m=>({...m, fecha:`San Fernando, ${hoy}.`,
-    firma:`${A.nombre} — RUT ${A.rut}<br>Firma del apoderado(a) titular`}));
+    firma:h`${A.nombre} — RUT ${A.rut}<br>Firma del apoderado(a) titular`}));
 }
 
 function filaDato(label, valor){
-  return `<div class="dato"><span class="label">${label}</span><span class="valor">${valor || "—"}</span></div>`;
+  return h`<div class="dato"><span class="label">${label}</span><span class="valor">${valor || "—"}</span></div>`;
 }
 
 function calcularEdad(fechaNacimiento){
@@ -501,7 +544,7 @@ function fichaAntecedentesInterior(f){
   const cursoOProcedencia = f.tipo==="antiguo"
     ? filaDato("Curso 2027", E.cursoMatricula || E.cursoAnterior || "—")
     : filaDato("Colegio de procedencia", E.procedencia);
-  return `
+  return h`
     <h2 class="ficha-h2">Ficha de Antecedentes del Estudiante</h2>
     <div class="ficha-top">
       <div class="ficha-datos">
@@ -536,7 +579,7 @@ function fichaAntecedentesInterior(f){
       ${filaDato("Situación laboral", A.situacionLaboral)}
       ${A.lugarTrabajo ? filaDato("Dónde trabaja", A.lugarTrabajo) : ""}
     </div>
-    ${S ? `
+    ${S ? h`
     <h3 class="ficha-subtitulo">Apoderado suplente</h3>
     <div class="ficha-datos">
       ${filaDato("Nombre", S.nombre)}
@@ -552,24 +595,25 @@ function fichaAntecedentesInterior(f){
     </div>` : ""}
     <div class="firma-doble">
       <div class="firma"><span class="linea-firma">${A.nombre} — RUT ${A.rut}<br>Firma del apoderado(a) titular</span></div>
-      ${S ? `<div class="firma"><span class="linea-firma">${S.nombre} — RUT ${S.rut}<br>Firma del apoderado(a) suplente</span></div>` : ""}
+      ${S ? h`<div class="firma"><span class="linea-firma">${S.nombre} — RUT ${S.rut}<br>Firma del apoderado(a) suplente</span></div>` : ""}
     </div>`;
 }
 
 function renderMemos(){
   const memos = textosMemos(fichaActual);
-  document.getElementById("memosPantalla").innerHTML = memos.map(m=>`
+  const f = fichaActual;
+  document.getElementById("memosPantalla").innerHTML = String(h`${memos.map(m => h`
     <div class="memo-card">
       <h3>${m.titulo}</h3>
       <div>${m.cuerpo}</div>
       <p style="margin-top:16px">${m.fecha}</p>
       <div class="firma"><span class="linea-firma">${m.firma}</span></div>
-    </div>`).join("") + `<div class="memo-card">${fichaAntecedentesInterior(fichaActual)}</div>`;
-  document.getElementById("printArea").innerHTML = memos.map(m=>`
+    </div>`)}<div class="memo-card">${fichaAntecedentesInterior(f)}</div>`);
+  document.getElementById("printArea").innerHTML = String(h`${memos.map(m => h`
     <div class="print-memo">
       <div class="encabezado">
         <div class="colegio">${NOMBRE_COLEGIO}</div>
-        <div class="sub">Proceso de Matrícula 2027 — Ficha ${fichaActual.folio}</div>
+        <div class="sub">Proceso de Matrícula 2027 — Ficha ${f.folio}</div>
       </div>
       <h2>${m.titulo}</h2>
       <div class="cuerpo">${m.cuerpo}</div>
@@ -577,15 +621,15 @@ function renderMemos(){
       <div class="firma"><span class="linea-firma">${m.firma}</span></div>
       <div class="pie-pagina">
         <img src="${LOGO_SRC}" alt="Logo">
-        <div class="pie-texto">${NOMBRE_COLEGIO}<br>Proceso de Matrícula 2027 — Ficha ${fichaActual.folio}</div>
+        <div class="pie-texto">${NOMBRE_COLEGIO}<br>Proceso de Matrícula 2027 — Ficha ${f.folio}</div>
       </div>
-    </div>`).join("") + htmlFichaImpresa(fichaActual);
+    </div>`)}${htmlFichaImpresa(f)}`);
 }
 
 // Hoja impresa de la «Ficha de antecedentes del estudiante» (se usa al generar los documentos
 // y al reimprimir una matrícula desde el panel)
 function htmlFichaImpresa(f){
-  return `
+  return h`
     <div class="print-memo ficha-print">
       <div class="encabezado encabezado-ficha">
         <img src="${LOGO_SRC}" alt="Logo">
@@ -657,11 +701,11 @@ async function finalizarMatricula(){
   const btn = document.getElementById("btnFinalizar");
   btn.disabled = true; btn.textContent = "Guardando…";
   try{
-    await rpc("guardar_matricula", { p_clave: claveInterna, p_ficha: fichaActual });
+    await rpc("guardar_matricula", { p_clave: tokenInterno, p_ficha: fichaActual });
 
     // Si venía de una pre-matrícula, eliminarla (el código ya se usó)
     if (codigoPreCargado){
-      try{ await rpc("eliminar_prematricula", { p_clave: claveInterna, p_codigo: codigoPreCargado }); }catch(e){ console.error(e); }
+      try{ await rpc("eliminar_prematricula", { p_clave: tokenInterno, p_codigo: codigoPreCargado }); }catch(e){ console.error(e); }
       codigoPreCargado = null;
     }
 
@@ -670,43 +714,25 @@ async function finalizarMatricula(){
     const correo = fichaActual.apoderado.correo;
     if (correo){
       if (correoListo){
-        const E=fichaActual.estudiante;
-        const detalle =
-`Estimado(a) ${fichaActual.apoderado.nombre}:
-Confirmamos la matrícula 2027 en ${NOMBRE_COLEGIO}.
-
-Ficha: ${fichaActual.folio}
-Estudiante: ${E.nombre} (RUT ${E.rut})
-Tipo: ${fichaActual.tipo==="nuevo"?"Estudiante nuevo":"Estudiante antiguo"}
-${fichaActual.tipo==="nuevo" ? "Colegio de procedencia: "+E.procedencia : "Curso 2027: "+E.cursoMatricula}
-Fecha de registro: ${fichaActual.fechaRegistro}
-
-Documentos firmados por el apoderado:
-• Autorización de uso de imagen
-• Aceptación del Reglamento Interno
-• Autorización de salidas pedagógicas
-
-Se adjunta además el certificado de matrícula en PDF.
-
-Atentamente,
-${NOMBRE_COLEGIO}
-
---
-Este es un correo automático de confirmación de matrícula.
-Para consultas escriba a: ${CONTACTO_COLEGIO.correo} · Teléfono: ${CONTACTO_COLEGIO.telefono}
-${NOMBRE_COLEGIO} · ${CONTACTO_COLEGIO.direccion}`;
+        const E = fichaActual.estudiante;
         let comprobantePdf = null;
         try{ comprobantePdf = generarComprobantePDFBase64(fichaActual); }
         catch(err){ console.error("Comprobante PDF:", err); }
         try{
+          // El script de Google comprueba la sesión (token) y arma el texto del correo por su cuenta:
+          // aquí solo se envían datos, nunca texto libre ni secretos.
           const resp = await fetch(APPS_SCRIPT_URL, {
             method: "POST",
             body: JSON.stringify({
-              secreto: APPS_SCRIPT_SECRETO,
+              token: tokenInterno,
               to: correo,
-              subject: `Confirmación de matrícula 2027 - Ficha ${fichaActual.folio}`,
-              body: detalle,
-              replyTo: CONTACTO_COLEGIO.correo,
+              folio: fichaActual.folio,
+              fechaRegistro: fichaActual.fechaRegistro,
+              tipo: fichaActual.tipo,
+              nombreApoderado: fichaActual.apoderado.nombre,
+              nombreEstudiante: E.nombre,
+              rutEstudiante: E.rut,
+              cursoOProcedencia: fichaActual.tipo === "nuevo" ? (E.procedencia || "") : (E.cursoMatricula || ""),
               pdfBase64: comprobantePdf,
               pdfName: `Certificado_matricula_ficha_${fichaActual.folio}.pdf`
             })
@@ -719,7 +745,7 @@ ${NOMBRE_COLEGIO} · ${CONTACTO_COLEGIO.direccion}`;
           msgMail = "Los datos se guardaron, pero el correo no pudo enviarse (revisa la configuración del script de Google).";
         }
       } else {
-        msgMail = "Los datos se guardaron. Para el envío automático de correos, configura el script de Google al inicio del archivo.";
+        msgMail = "Los datos se guardaron. El envío automático de correos no está configurado todavía.";
       }
     }
 
@@ -740,24 +766,32 @@ function pedirClaveAdmin(){ document.getElementById("inputClave").value=""; abri
 document.getElementById("inputClave").addEventListener("keydown",e=>{ if(e.key==="Enter") validarClave(); });
 async function validarClave(){
   const clave = document.getElementById("inputClave").value;
+  const btn = document.querySelector("#ovClave .btn-pri");
+  btn.disabled = true;
   try{
-    if (!(await rpc("verificar_clave", { p_clave: clave }))){
-      aviso("Clave incorrecta","La clave ingresada no es válida."); return;
+    const r = await rpc("iniciar_sesion", { p_clave: clave, p_rol: "admin" });
+    if (!r || !r.ok){
+      if (r && r.motivo === "bloqueado") aviso("Demasiados intentos", "Se registraron demasiados intentos fallidos desde esta conexión. Espera " + (r.espera_minutos || 15) + " minutos e inténtalo de nuevo.");
+      else aviso("Clave incorrecta","La clave ingresada no es válida.");
+      return;
     }
+    tokenAdmin = r.token;
   }catch(err){
     aviso("No se pudo verificar la clave", err.message); return;
+  }finally{
+    btn.disabled = false;
+    document.getElementById("inputClave").value = "";
   }
-  claveAdmin = clave;
   cerrar("ovClave");
   cargarAdmin();
 }
 async function cargarAdmin(){
   mostrar("scr-admin");
   const tb = document.getElementById("tbodyAdmin");
-  if (!sb){ tb.innerHTML = `<tr><td colspan="9">Supabase no está configurado.</td></tr>`; return; }
-  tb.innerHTML = `<tr><td colspan="9">Cargando…</td></tr>`;
+  if (!sb){ tb.replaceChildren(filaMensaje("Supabase no está configurado.")); return; }
+  tb.replaceChildren(filaMensaje("Cargando…"));
   try{
-    const filas = await rpc("listar_matriculas", { p_clave: claveAdmin });
+    const filas = await rpc("listar_matriculas", { p_clave: tokenAdmin });
     registros = (filas || []).map(val => ({
       _key: val._key,
       folio: val.folio ?? "—",
@@ -777,7 +811,7 @@ async function cargarAdmin(){
     aplicarFiltrosAdmin();
   }catch(err){
     console.error(err);
-    tb.innerHTML = `<tr><td colspan="9">No se pudieron cargar las matrículas: ${err.message}</td></tr>`;
+    tb.replaceChildren(filaMensaje("No se pudieron cargar las matrículas: " + err.message));
   }
 }
 
@@ -785,7 +819,7 @@ function poblarFiltroCursosAdmin(){
   const sel = document.getElementById("fCurso");
   const actual = sel.value;
   const cursos = [...new Set(registros.map(r => r.estudiante.cursoMatricula || r.estudiante.cursoAnterior || "").filter(Boolean))].sort();
-  sel.innerHTML = '<option value="">Todos los cursos</option>' + cursos.map(c=>`<option value="${c}">${c}</option>`).join("");
+  sel.replaceChildren(el("option", { value: "", texto: "Todos los cursos" }), ...cursos.map(c => el("option", { value: c, texto: c })));
   if (cursos.includes(actual)) sel.value = actual;
 }
 
@@ -839,21 +873,35 @@ function renderTablaAdmin(lista){
     : lista.length + " de " + registros.length + " matrícula(s) (filtro aplicado).";
   const btnDesc = document.getElementById("btnDescargarExcel");
   btnDesc.textContent = (lista.length===registros.length) ? "⬇️ Descargar Excel" : "⬇️ Descargar Excel (filtrado)";
-  tb.innerHTML = lista.length ? lista.map(r=>`
-      <tr>
-        <td>${r.folio}</td><td>${r.fechaRegistro}</td>
-        <td><span class="pill ${r.tipo}">${r.tipo}</span></td>
-        <td>${r.estudiante.nombre ?? "—"}</td><td>${r.estudiante.rut ?? "—"}</td>
-        <td>${r.tipo==="antiguo" ? (r.estudiante.cursoMatricula ?? r.estudiante.cursoAnterior ?? "—") : (r.estudiante.procedencia ?? "—")}</td>
-        <td>${r.apoderado.nombre ?? "—"}</td><td>${r.apoderado.celular ?? "—"}</td>
-        <td><div class="acciones">
-          <button class="btn-del" title="Imprimir ficha de matrícula" onclick="imprimirFichaMatricula('${r._key}')">🖨️</button>
-          <button class="btn-del" title="Cambiar N° de ficha" onclick="abrirFolioFicha('${r._key}')">#</button>
-          <button class="btn-del" title="Editar matrícula" onclick="editarMatricula('${r._key}')">✏️</button>
-          <button class="btn-del" title="Eliminar matrícula" onclick="confirmarEliminar('${r._key}','${(r.estudiante.nombre ?? "este estudiante").replace(/'/g,"\\'")}')">🗑️</button>
-</div>
-        </td>
-      </tr>`).join("") : (registros.length ? `<tr><td colspan="9">Ninguna matrícula coincide con el filtro.</td></tr>` : `<tr><td colspan="9">Aún no hay matrículas registradas.</td></tr>`);
+  if (!lista.length){
+    tb.replaceChildren(filaMensaje(registros.length ? "Ninguna matrícula coincide con el filtro." : "Aún no hay matrículas registradas."));
+    return;
+  }
+  tb.replaceChildren(...lista.map(filaMatricula));
+}
+
+function filaMensaje(texto){
+  return el("tr", {}, el("td", { colspan: "9", texto }));
+}
+
+// Una fila del panel. Todo dato de la matrícula se inserta como texto (textContent), nunca como HTML.
+function filaMatricula(r){
+  const tipo = r.tipo === "antiguo" ? "antiguo" : "nuevo";
+  const nombre = r.estudiante.nombre ?? "—";
+  const boton = (titulo, icono, accion, args) =>
+    el("button", { class: "btn-del", type: "button", title: titulo, texto: icono, datos: { click: accion, args: JSON.stringify(args) } });
+  const acciones = el("div", { class: "acciones" },
+    boton("Imprimir ficha de matrícula", "🖨️", "imprimirFichaMatricula", [r._key]),
+    boton("Cambiar N° de ficha", "#", "abrirFolioFicha", [r._key]),
+    boton("Editar matrícula", "✏️", "editarMatricula", [r._key]),
+    boton("Eliminar matrícula", "🗑️", "confirmarEliminar", [r._key, r.estudiante.nombre ?? "este estudiante"]));
+  return el("tr", {},
+    el("td", { texto: r.folio }), el("td", { texto: r.fechaRegistro }),
+    el("td", {}, el("span", { class: "pill " + tipo, texto: tipo })),
+    el("td", { texto: nombre }), el("td", { texto: r.estudiante.rut ?? "—" }),
+    el("td", { texto: tipo === "antiguo" ? (r.estudiante.cursoMatricula ?? r.estudiante.cursoAnterior ?? "—") : (r.estudiante.procedencia ?? "—") }),
+    el("td", { texto: r.apoderado.nombre ?? "—" }), el("td", { texto: r.apoderado.celular ?? "—" }),
+    el("td", {}, acciones));
 }
 
 function confirmarEliminar(key, nombre){
@@ -866,7 +914,7 @@ async function eliminarMatricula(){
   const btn = document.getElementById("btnConfirmarEliminar");
   btn.disabled = true; btn.textContent = "Eliminando…";
   try{
-    await rpc("eliminar_matricula", { p_clave: claveAdmin, p_id: claveEliminarPendiente });
+    await rpc("eliminar_matricula", { p_clave: tokenAdmin, p_id: claveEliminarPendiente });
     cerrar("ovEliminar");
     cargarAdmin();
   }catch(err){
@@ -953,7 +1001,7 @@ async function abrirContadorFolio(){
   const inp = document.getElementById("inputSiguienteFolio");
   inp.value = "";
   abrir("ovContadorFolio");
-  try{ inp.value = await rpc("ver_siguiente_folio", { p_clave: claveAdmin }); }
+  try{ inp.value = await rpc("ver_siguiente_folio", { p_clave: tokenAdmin }); }
   catch(err){ cerrar("ovContadorFolio"); aviso("No se pudo leer el contador", err.message); return; }
   inp.focus(); inp.select();
 }
@@ -963,9 +1011,9 @@ async function guardarContadorFolio(){
   const btn = document.getElementById("btnGuardarContador");
   btn.disabled = true; btn.textContent = "Guardando…";
   try{
-    await rpc("establecer_siguiente_folio", { p_clave: claveAdmin, p_valor: valor });
+    await rpc("establecer_siguiente_folio", { p_clave: tokenAdmin, p_valor: valor });
     cerrar("ovContadorFolio");
-    aviso("Contador actualizado", "La próxima ficha que se genere será la <b>N° " + valor + "</b>.");
+    aviso("Contador actualizado", h`La próxima ficha que se genere será la <b>N° ${valor}</b>.`);
   }catch(err){
     aviso("No se pudo cambiar el contador", err.message);
   }finally{
@@ -989,7 +1037,7 @@ async function guardarFolioFicha(){
   const btn = document.getElementById("btnGuardarFolioFicha");
   btn.disabled = true; btn.textContent = "Guardando…";
   try{
-    await rpc("cambiar_folio_matricula", { p_clave: claveAdmin, p_id: folioFichaKey, p_folio: valor });
+    await rpc("cambiar_folio_matricula", { p_clave: tokenAdmin, p_id: folioFichaKey, p_folio: valor });
     cerrar("ovFolioFicha");
     cargarAdmin();
   }catch(err){
@@ -999,59 +1047,91 @@ async function guardarFolioFicha(){
   }
 }
 
-/* ---------- Acceso del personal (clave interna) ---------- */
-// Los apoderados que llegan por el QR (?apoderado) no pasan por esta pantalla.
-function cerrarAcceso(){
-  claveInterna = null; claveAdmin = null;
-  try{ sessionStorage.removeItem("claveInterna"); }catch(e){}
-  document.getElementById("inputClaveInterna").value = "";
-  document.getElementById("accesoError").textContent = "";
-  mostrar("scr-acceso");
-}
-async function entrarConClave(clave, silencioso){
-  const err = document.getElementById("accesoError");
-  const btn = document.getElementById("btnAcceso");
-  err.textContent = "";
-  btn.disabled = true; btn.textContent = "Verificando…";
-  try{
-    if (!(await rpc("verificar_clave_interna", { p_clave: clave }))){
-      if (!silencioso) err.textContent = "Clave incorrecta.";
-      return false;
-    }
-    claveInterna = clave;
-    try{ sessionStorage.setItem("claveInterna", clave); }catch(e){}
-    mostrar("scr-home");
-    return true;
-  }catch(e){
-    if (!silencioso) err.textContent = "No se pudo verificar la clave: " + e.message;
-    return false;
-  }finally{
-    btn.disabled = false; btn.textContent = "Entrar";
-  }
-}
-document.getElementById("formAcceso").addEventListener("submit", e=>{
-  e.preventDefault();
-  const clave = document.getElementById("inputClaveInterna").value;
-  if (!clave){ document.getElementById("accesoError").textContent = "Escribe la clave."; return; }
-  entrarConClave(clave, false);
-});
-if (MODO_APODERADO){
-  mostrar("scr-home");
-} else if (claveInterna){
-  // Había una sesión en esta pestaña: se vuelve a comprobar con el servidor
-  entrarConClave(claveInterna, true).then(ok => { if (!ok) cerrarAcceso(); });
-}
-
 /* ---------- Reimprimir la ficha de una matrícula desde el panel ---------- */
 function imprimirFichaMatricula(key){
   const r = registros.find(x => x._key === key);
   if (!r) return;
   const f = { folio: r.folio, fechaRegistro: r.fechaRegistro, tipo: r.tipo,
               estudiante: r.estudiante || {}, apoderado: r.apoderado || {}, suplente: r.suplente || null };
-  document.getElementById("printArea").innerHTML = htmlFichaImpresa(f);
+  document.getElementById("printArea").innerHTML = String(htmlFichaImpresa(f));
   // el nombre del archivo PDF sale del título de la página
   const tituloOriginal = document.title;
   document.title = ("Ficha " + f.folio + " - " + (f.estudiante.nombre || "")).trim();
   window.addEventListener("afterprint", () => { document.title = tituloOriginal; }, { once: true });
   window.print();
 }
+
+/* ---------- Acceso del personal (clave interna → token de sesión) ---------- */
+// Los apoderados que llegan por el QR (?apoderado) no pasan por esta pantalla.
+function cerrarAcceso(){
+  // Se avisa al servidor para que invalide los tokens (si falla, igual vencen solos)
+  for (const t of [tokenInterno, tokenAdmin]) if (t) rpc("cerrar_sesion", { p_token: t }).catch(() => {});
+  tokenInterno = null; tokenAdmin = null;
+  try{ sessionStorage.removeItem("tokenInterno"); }catch(e){}
+  document.getElementById("inputClaveInterna").value = "";
+  document.getElementById("accesoError").textContent = "";
+  mostrar("scr-acceso");
+}
+async function entrarConClave(clave){
+  const err = document.getElementById("accesoError");
+  const btn = document.getElementById("btnAcceso");
+  err.textContent = "";
+  btn.disabled = true; btn.textContent = "Verificando…";
+  try{
+    const r = await rpc("iniciar_sesion", { p_clave: clave, p_rol: "interna" });
+    if (!r || !r.ok){
+      err.textContent = r && r.motivo === "bloqueado"
+        ? "Demasiados intentos fallidos desde esta conexión. Espera " + (r.espera_minutos || 15) + " minutos."
+        : "Clave incorrecta.";
+      return false;
+    }
+    tokenInterno = r.token;
+    try{ sessionStorage.setItem("tokenInterno", r.token); }catch(e){}
+    mostrar("scr-home");
+    return true;
+  }catch(e){
+    err.textContent = "No se pudo verificar la clave: " + e.message;
+    return false;
+  }finally{
+    btn.disabled = false; btn.textContent = "Entrar";
+    document.getElementById("inputClaveInterna").value = "";
+  }
+}
+document.getElementById("formAcceso").addEventListener("submit", e=>{
+  e.preventDefault();
+  const clave = document.getElementById("inputClaveInterna").value;
+  if (!clave){ document.getElementById("accesoError").textContent = "Escribe la clave."; return; }
+  entrarConClave(clave);
+});
+if (MODO_APODERADO){
+  mostrar("scr-home");
+} else if (tokenInterno){
+  // Había una sesión en esta pestaña: el servidor comprueba que siga vigente
+  rpc("validar_token", { p_token: tokenInterno })
+    .then(rol => { if (rol) mostrar("scr-home"); else cerrarAcceso(); })
+    .catch(() => cerrarAcceso());
+}
+
+/* ---------- Eventos (sin manejadores en línea: la política de seguridad de contenido no los permite) ----------
+   Los elementos declaran su acción con data-click / data-change / data-input (+ data-args en JSON).
+   Solo se pueden invocar las funciones de esta lista. */
+const ACCIONES = {
+  abrirCargarCodigo, abrirContadorFolio, actualizarLugarTrabajo, aplicarFiltrosAdmin, cargarPrematricula, cerrar, cerrarAcceso,
+  copiarLinkApoderado, descargarExcel, descargarExcelLibro, eliminarMatricula, finalizarMatricula, guardarContadorFolio,
+  guardarFolioFicha, imprimirMemos, iniciarFicha, limpiarFiltrosAdmin, mostrar, mostrarQR, nuevaMatricula, pedirClaveAdmin,
+  toggleSub, validarClave, volverInicio,
+  // botones de las filas del panel
+  imprimirFichaMatricula, abrirFolioFicha, editarMatricula, confirmarEliminar
+};
+function despachar(evento, atributo){
+  const origen = evento.target.closest ? evento.target.closest(`[data-${atributo}]`) : null;
+  if (!origen) return;
+  const f = Object.prototype.hasOwnProperty.call(ACCIONES, origen.dataset[atributo]) ? ACCIONES[origen.dataset[atributo]] : null;
+  if (!f) return;
+  let args = [];
+  try{ args = origen.dataset.args ? JSON.parse(origen.dataset.args) : []; }catch(e){ return; }
+  if (Array.isArray(args)) f(...args);
+}
+document.addEventListener("click", e => despachar(e, "click"));
+document.addEventListener("change", e => despachar(e, "change"));
+document.addEventListener("input", e => despachar(e, "input"));
