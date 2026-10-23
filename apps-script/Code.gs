@@ -227,7 +227,7 @@ function limpiar_(v, max) {
 }
 function slug_(texto) {
   var t = limpiar_(String(texto || ''), 80);
-  try { t = t.normalize('NFD').replace(/[̀-ͯ]/g, ''); } catch (e) {}
+  try { t = t.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); } catch (e) {}
   t = t.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').substring(0, 30);
   return t || 'Estudiante';
 }
