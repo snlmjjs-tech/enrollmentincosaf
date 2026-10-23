@@ -2,7 +2,8 @@
 -- 06 · DIAGNÓSTICO: tablas, columnas, funciones, permisos y RLS (solo lee; no cambia nada)
 -- =====================================================================================================
 -- Dónde: SQL Editor del proyecto de PRUEBAS.  Cuándo: después de instalar (01–04) y cada vez que cambies algo.
--- Resultado: una tabla con una fila por comprobación. Todas deben decir OK. «INFO» es solo información.
+-- Resultado: una tabla con una fila por comprobación. Las que fallan salen PRIMERO: si la primera fila dice OK o INFO, no hay problemas.
+-- Todas deben decir OK; «INFO» es solo información.
 -- No muestra claves, hashes ni datos personales.
 -- =====================================================================================================
 with tablas(t) as (values ('matriculas'), ('prematriculas'), ('config'), ('sesiones'), ('intentos'), ('auditoria'), ('solicitudes')),
@@ -83,4 +84,4 @@ select * from (
   union all select 11, 'Solicitudes registradas', 'INFO', (select count(*) from public.solicitudes)::text
   union all select 11, 'Próximo folio', 'INFO', (select case when is_called then last_value + 1 else last_value end from public.folio_2027_seq)::text
 ) r
-order by orden, estado desc, comprobacion;
+order by case estado when 'FALLA' then 0 when 'REVISAR' then 1 when 'INFO' then 3 else 2 end, orden, comprobacion;   -- los problemas salen primero
