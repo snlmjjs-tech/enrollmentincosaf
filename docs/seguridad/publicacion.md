@@ -34,7 +34,7 @@ pega `supabase/migraciones/002_matricula_multiple.sql` → Run (matrícula múlt
 **3. Cambiar las claves** (puedes hacerlo ya, funciona con las dos versiones de la página): ver `credenciales.md`, sección A. Avisa al personal.
 
 **4. Ventana de publicación (≈10 minutos).** En este orden y seguidos:
-1. *Script de Google:* instalar `apps-script/Code.gs` y las propiedades (`credenciales.md`, sección B; ahora también `ENTORNO` = `produccion` y `SECRETO_SCRIPT`). Desde este momento la página **actual** no podrá enviar correos (las matrículas se guardan igual).
+1. *Script de Google (método usado):* se crea un **proyecto de Apps Script NUEVO y aparte** (`apps-script/Code.gs` + propiedades, `ENTORNO` = `produccion` y `SECRETO_SCRIPT`) y su dirección `/exec` queda escrita en `APPS_SCRIPT_URL` de `js/app.js` **dentro de la rama**. El script viejo sigue funcionando mientras tanto, así que **no hay ningún momento sin correos**. Si se prefiere reemplazar el código del script viejo, la página actual no podrá enviar correos hasta publicar (las matrículas se guardan igual).
 2. *GitHub:* abre un Pull Request `seguridad-matriculas → main` y fusiónalo (o pídemelo con tu autorización).
 3. Espera 1–3 minutos a que Pages publique. Abre la página con **Ctrl+Shift+R** (o en ventana de incógnito).
 
@@ -53,6 +53,8 @@ pega `supabase/migraciones/002_matricula_multiple.sql` → Run (matrícula múlt
 y se eliminan las funciones antiguas. Vuelve a entrar a la página para confirmar que todo sigue funcionando.
 
 **7. Limpieza automática.** `supabase/programar_limpieza.sql` (ver `limpieza.md`): activar `pg_cron`, programar y comprobar.
+
+**7b. Apagar el script viejo.** Cuando la página nueva ya envía correos bien, en el proyecto de Apps Script **viejo**: *Implementar → Administrar implementaciones → Archivar* (o reemplazar su código por uno vacío). Así el secreto antiguo, que estuvo en el código público, deja de servir.
 
 **8. Después.** Eliminar Firebase, activar la verificación en dos pasos (GitHub, Supabase, Google) y proteger la rama `main` (GitHub → Settings → Branches).
 

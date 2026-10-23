@@ -29,7 +29,7 @@ let r = correr(['--supabase-url', URL_PRUEBA, '--supabase-key', CLAVE_PRUEBA, '-
 ok('termina bien y crea la carpeta de pruebas', r.status === 0 && fs.existsSync(r.salida), (r.stderr || '').slice(0, 200));
 const app = r.status === 0 ? leer(r, 'js/app.js') : '', html = r.status === 0 ? leer(r, 'index.html') : '';
 ok('js/app.js apunta a la URL y la clave de PRUEBAS', app.includes(`const SUPABASE_URL = "${URL_PRUEBA}"`) && app.includes(CLAVE_PRUEBA) && app.includes(APPS_PRUEBA));
-ok('no queda NADA de producción (ni proyecto, ni clave pública real, ni Apps Script real)', !app.includes(REF_PROD) && !html.includes(REF_PROD) && !/sb_publishable_bjKNRf/.test(app) && !/AKfycbzFw8rbYDDGh9ZDQ5oC/.test(app));
+ok('no queda NADA de producción (ni proyecto, ni clave pública real, ni Apps Script real)', !app.includes(REF_PROD) && !html.includes(REF_PROD) && !/sb_publishable_bjKNRf/.test(app) && !/AKfycbzFw8rbYDDGh9ZDQ5oC/.test(app) && !/AKfycbyuK1KURduUz0Nvrodo/.test(app));
 ok('la política de seguridad (CSP) solo permite hablar con el proyecto de pruebas', html.includes(`connect-src 'self' ${URL_PRUEBA}`) && !html.includes(REF_PROD));
 ok('la página muestra la franja roja «ENTORNO DE PRUEBAS» con el ID del proyecto', /ENTORNO DE PRUEBAS · proyecto abcdefghijklmnopqrst/.test(html) && /<title>\[PRUEBAS\]/.test(html));
 ok('no se copian CNAME, nomina2026.json ni la carpeta de pruebas/docs', !fs.existsSync(path.join(r.salida, 'CNAME')) && !fs.existsSync(path.join(r.salida, 'nomina2026.json')) && !fs.existsSync(path.join(r.salida, 'tests')) && !fs.existsSync(path.join(r.salida, 'supabase')));

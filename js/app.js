@@ -18,7 +18,7 @@ const SUPABASE_ANON_KEY = "sb_publishable_bjKNRfhy3hQgXnE8wzvDSw_6Wpfu1CI"; // c
 // 2) Envío del comprobante al apoderado (Google Apps Script + Gmail).
 //    Aquí va SOLO la dirección del script. No hay ningún secreto en este archivo: el script comprueba
 //    que quien lo llama tenga una sesión de funcionario válida (ver apps-script/Code.gs).
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzFw8rbYDDGh9ZDQ5oC_sHcwnnP1BnOuWFzkKrXtaOaaktPtVRnnbFhcFL4jrWMU8fP/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyuK1KURduUz0Nvrodo_fT4gkMI-Sy4Wn9AUg7yN12QYa-8sIfU8T-XvkA4E-f2QCJHtw/exec";
 /* ========================================================== */
 
 let sb = null;
