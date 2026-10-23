@@ -49,6 +49,13 @@ const malas = d => d.filter(x => x.estado === 'FALLA' || x.estado === 'REVISAR')
   ok('06 diagnóstico: hay comprobaciones y NINGUNA falla ni pide revisión', d.length > 60 && malas(d).length === 0, JSON.stringify(malas(d)));
   ok('06 incluye comprobaciones de tablas, RLS, permisos de tablas y de funciones', ['Tabla public.solicitudes', 'RLS activo en matriculas', 'Sin acceso directo de anon a config', 'Función pública guardar_solicitud', 'Funciones internas cerradas a anon'].every(c => d.some(x => x.comprobacion === c && x.estado === 'OK')));
   ok('06 no muestra claves ni hashes', !JSON.stringify(d).match(/\$2[aby]\$|enc-a1b2|fun-b1c2|scr-c1d2/));
+  // Supabase crea public.rls_auto_enable() (devuelve event_trigger, abierta a anon por defecto): no debe contar como falla
+  await db.admin(`create function public.rls_auto_enable() returns event_trigger language plpgsql security definer as $$ begin end $$; grant execute on function public.rls_auto_enable() to anon`);
+  d = diag();
+  ok('06 trata una función de disparador de la plataforma (rls_auto_enable) como INFO, no como falla', malas(d).length === 0 && d.some(x => /rls_auto_enable/.test(x.comprobacion) && x.estado === 'INFO'), JSON.stringify(malas(d)));
+  await db.admin(`create function public.otra_normal() returns integer language sql as 'select 1'; grant execute on function public.otra_normal() to anon`);
+  ok('06 sigue marcando como FALLA una función normal abierta a anon', malas(diag()).some(x => /otra_normal/.test(x.comprobacion)));
+  await db.admin(`drop function public.otra_normal(); drop function public.rls_auto_enable()`);
   ok('06 informa pg_cron como INFO (no es obligatorio en pruebas)', d.some(x => /pg_cron/.test(x.comprobacion) && x.estado === 'INFO'));
 
   sec('2) El esquema instalado funciona con las claves de prueba');

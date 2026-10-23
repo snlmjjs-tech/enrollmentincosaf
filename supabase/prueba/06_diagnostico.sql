@@ -42,10 +42,18 @@ select * from (
   select 7, 'Función NO esperada ejecutable por anon: ' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')', 'FALLA', 'debe estar cerrada a anon'
     from pg_proc p where p.pronamespace = 'public'::regnamespace and has_function_privilege('anon', p.oid, 'execute')
      and p.proname not in (select f from publicas) and p.proname not in ('verificar_clave', 'verificar_clave_interna')
+     and p.prorettype not in ('event_trigger'::regtype, 'trigger'::regtype)
+  union all
+  -- Las funciones que devuelven event_trigger/trigger (por ejemplo rls_auto_enable, que crea Supabase) solo las dispara la base de datos
+  -- al crear tablas: no se pueden llamar desde la página, así que se informan aparte y no cuentan como falla.
+  select 7, 'Función de disparador de la plataforma (no invocable desde la página): ' || p.proname, 'INFO', 'devuelve ' || format_type(p.prorettype, null)
+    from pg_proc p where p.pronamespace = 'public'::regnamespace and has_function_privilege('anon', p.oid, 'execute')
+     and p.prorettype in ('event_trigger'::regtype, 'trigger'::regtype)
   union all
   select 7, 'Funciones internas cerradas a anon', 'OK', 'ninguna función fuera de la lista pública es ejecutable por anon'
    where not exists (select 1 from pg_proc p where p.pronamespace = 'public'::regnamespace and has_function_privilege('anon', p.oid, 'execute')
-     and p.proname not in (select f from publicas) and p.proname not in ('verificar_clave', 'verificar_clave_interna'))
+     and p.proname not in (select f from publicas) and p.proname not in ('verificar_clave', 'verificar_clave_interna')
+     and p.prorettype not in ('event_trigger'::regtype, 'trigger'::regtype))
   union all
   -- 8. Transición cerrada: las funciones antiguas que aceptaban la clave directamente ya no existen
   select 8, 'Modo transición cerrado', case when coalesce((select not modo_transicion from public.config where id), false) then 'OK' else 'REVISAR' end,
