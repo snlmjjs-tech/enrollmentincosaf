@@ -64,20 +64,21 @@ async function abrir(url, { viewport = { width: 1100, height: 900 }, dl = false 
 const pant = pg => pg.evaluate(() => document.querySelector('.screen.active')?.id);
 const entrar = async (pg, c = FUNC) => { await pg.fill('#inputClaveInterna', c); await pg.press('#inputClaveInterna', 'Enter'); await pg.waitForTimeout(700); };
 const panel = async pg => { await pg.click('.admin-link'); await pg.fill('#inputClave', ENC); await pg.click('#ovClave .btn-pri'); await pg.waitForTimeout(900); };
+const radioPill = (pg, sel) => pg.click('label.radio-pill:has(' + sel + ')');   // como una persona: sobre la etiqueta visible; Playwright espera a que deje de desplazarse
 const cerrarAviso = pg => pg.evaluate(() => cerrar('ovAviso'));
 const idE = (n, c) => '#' + (n === 1 ? 'e_' : `e${n}_`) + c;
 const gn = (n, g) => n === 1 ? g : g + n;
 async function llenarEst(pg, n, o) {
   const f = (c, v) => pg.fill(idE(n, c), v);
-  await pg.check(`input[name=tipo_${n}][value=${o.tipo}]`, { force: true });
+  await radioPill(pg, `input[name=tipo_${n}][value=${o.tipo}]`);
   await f('nombre', o.nombre); await f('rut', o.rut); await pg.press(idE(n, 'rut'), 'Tab'); await f('fnac', '2012-05-10'); await f('dir', 'Calle Ficticia 123 TEST');
   await f('comuna', 'Comuna TEST'); await f('nacionalidad', 'Chilena'); await f('cel', '+56 9 0000 0000');
   if (o.tipo === 'nuevo') { await f('procedencia', 'Colegio TEST'); if (o.curso) await pg.selectOption(idE(n, 'cursoNuevo'), o.curso); }
   else { await pg.selectOption(idE(n, 'cursoAnt'), o.curso || '2° Medio'); await f('letraAnt', o.letra || 'a'); }
-  await pg.check(`input[name=${gn(n, 'rep')}][value=no]`, { force: true });
-  await pg.check(`input[name=${gn(n, 'pie')}][value=${o.pie || 'no'}]`, { force: true });
-  if (o.pie === 'si') { await f('pieDiag', 'Diagnóstico TEST'); await pg.check(`input[name=${gn(n, 'pieDoc')}][value=si]`, { force: true }); }
-  await pg.check(`input[name=${gn(n, 'salud')}][value=no]`, { force: true });
+  await radioPill(pg, `input[name=${gn(n, 'rep')}][value=no]`);
+  await radioPill(pg, `input[name=${gn(n, 'pie')}][value=${o.pie || 'no'}]`);
+  if (o.pie === 'si') { await f('pieDiag', 'Diagnóstico TEST'); await radioPill(pg, `input[name=${gn(n, 'pieDoc')}][value=si]`); }
+  await radioPill(pg, `input[name=${gn(n, 'salud')}][value=no]`);
   if (n > 1 && o.parentesco) await pg.selectOption(idE(n, 'parentesco'), o.parentesco);
   if (n > 1 && o.vive) await pg.selectOption(idE(n, 'vive'), o.vive);
 }
@@ -126,9 +127,9 @@ const H = [
     ok('solo hay UN bloque de datos del apoderado y uno de suplente', (await pg.evaluate(() => document.querySelectorAll('#a_nombre').length + document.querySelectorAll('#s_nombre').length)) === 2);
     ok('el parentesco y «vive con» se pueden fijar por estudiante (2 y 3)', await pg.isVisible('#e2_parentesco') && await pg.isVisible('#e3_vive') && !(await pg.$('#e_parentesco')));
     // Condición: campos distintos para cada tipo
-    await pg.check('input[name=tipo_2][value=nuevo]', { force: true });
+    await radioPill(pg, 'input[name=tipo_2][value=nuevo]');
     ok('al elegir «nuevo» en la ficha 2 aparecen sus campos de nuevo y no los de antiguo', await pg.isVisible('#e2_procedencia') && !(await pg.isVisible('#e2_cursoAnt')) && await pg.isVisible('#e_cursoAnt'));
-    await pg.check('input[name=tipo_2][value=antiguo]', { force: true });
+    await radioPill(pg, 'input[name=tipo_2][value=antiguo]');
     ok('y viceversa; la ficha 1 no cambia', await pg.isVisible('#e2_cursoAnt') && !(await pg.isVisible('#e2_procedencia')) && await pg.isChecked('input[name=tipo_1][value=antiguo]'));
 
     sec('2) Quitar una ficha: con confirmación (protección contra eliminaciones accidentales)');
@@ -150,7 +151,7 @@ const H = [
     pg = await abrir('/index.html'); await entrar(pg); await pg.click('.card-btn:nth-child(2)');
     await llenarEst(pg, 1, H[0]); await pg.click('#btnAddEst'); await pg.click('#btnAddEst');
     await llenarEst(pg, 2, { ...H[1], rut: '41.000.002-0' });   // RUT con dígito verificador incorrecto
-    await pg.check('input[name=tipo_3][value=nuevo]', { force: true });   // el 3 queda casi vacío
+    await radioPill(pg, 'input[name=tipo_3][value=nuevo]');   // el 3 queda casi vacío
     await llenarApoderado(pg); await enviar(pg);
     const lista = await pg.evaluate(() => [...document.querySelectorAll('#bannerDetalle li')].map(l => l.textContent));
     ok('no avanza y el aviso lista los problemas por estudiante', (await pant(pg)) === 'scr-form' && lista.length >= 2, JSON.stringify(lista));
@@ -162,7 +163,7 @@ const H = [
     await capturar(pg, 'validacion_multiple');
     await pg.fill('#e2_rut', H[1].rut); await pg.fill('#e3_rut', H[1].rut); await pg.press('#e3_rut', 'Tab');
     await pg.fill('#e3_nombre', 'Otro'); await pg.fill('#e3_fnac', '2012-01-01'); await pg.fill('#e3_dir', 'x'); await pg.fill('#e3_comuna', 'x'); await pg.fill('#e3_nacionalidad', 'x'); await pg.fill('#e3_cel', '1'); await pg.fill('#e3_procedencia', 'x');
-    for (const g of ['rep', 'pie', 'salud']) await pg.check(`input[name=${g}3][value=no]`, { force: true });
+    for (const g of ['rep', 'pie', 'salud']) await radioPill(pg, `input[name=${g}3][value=no]`);
     await enviar(pg);
     ok('el mismo RUT en dos estudiantes de la solicitud se rechaza nombrando al estudiante', (await pant(pg)) === 'scr-form' && (await pg.evaluate(() => [...document.querySelectorAll('#bannerDetalle li')].map(l => l.textContent).join('|'))).includes('RUT está repetido'));
     await pg.context().close();
