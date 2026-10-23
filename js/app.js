@@ -57,6 +57,16 @@ function el(etiqueta, props = {}, ...hijos){
   return e;
 }
 
+/* ---------- Varios estudiantes en una solicitud: ayudantes ----------
+   El estudiante 1 usa los campos de siempre (e_nombre, e_rut…). Los estudiantes 2 a 5 son copias de ese bloque con
+   los campos renombrados (e2_nombre, e2_rut…). Los datos del apoderado y del suplente existen una sola vez. */
+const $ = id => document.getElementById(id);
+const eid = (n, campo) => n === 1 ? `e_${campo}` : `e${n}_${campo}`;          // id de un campo del estudiante n
+const gname = (n, grupo) => n === 1 ? grupo : `${grupo}${n}`;                   // nombre del grupo de radios (rep, pie, pieDoc, salud)
+const bloques = () => [...document.querySelectorAll("#ficha .est-bloque")].map(b => +b.dataset.n);   // estudiantes en pantalla, en orden
+const tipoDe = n => document.querySelector(`input[name="tipo_${n}"]:checked`)?.value || "";
+const PARENTESCOS = ["Madre", "Padre", "Abuelo(a)", "Hermano(a)", "Tío(a)", "Tutor(a) legal", "Otro"];
+
 // Mensajes del servidor que sí se muestran tal cual (están escritos para el usuario). Cualquier otro
 // error de la base se registra en la consola y al usuario se le muestra un mensaje general.
 const MENSAJES_SERVIDOR = /(folio_invalido|folio_en_uso|folio_duplicado|dato_invalido|demasiados_intentos|demasiadas_solicitudes|solicitud_invalida): (.*)/s;
@@ -85,8 +95,21 @@ try{ tokenInterno = sessionStorage.getItem("tokenInterno"); }catch(e){}
 
 const correoListo = !APPS_SCRIPT_URL.includes("PEGA_AQUI");
 
-let tipoEstudiante = "nuevo";
-let fichaActual = null;
+// Límites de la solicitud y del correo. Deben ser iguales a los del servidor (supabase/migraciones/002 y apps-script/Code.gs);
+// aquí se comprueban ANTES de enviar para avisar de inmediato. Justificación: docs/multiple/LIMITES.md
+const MAX_ESTUDIANTES = 5;
+const MAX_PDF_BASE64 = 250000;       // por certificado (un certificado comprimido mide ≈ 120 000)
+const MAX_TOTAL_BASE64 = 1000000;    // suma de los certificados de una solicitud
+
+let tipoEstudiante = "nuevo";       // condición (nuevo / antiguo) del estudiante 1
+let fichaActual = null;             // = fichasActuales[0] (se mantiene por compatibilidad)
+let fichasActuales = [];            // una ficha por estudiante de la solicitud en curso
+let solicitudActual = null;         // { id, cantidad, folios, guardada }: el id permite reintentar sin duplicar
+let solicitudGuardada = null;       // { id, fichas } tras guardar (para reintentar el correo)
+let solicitudPendiente = null;      // datos de la solicitud mientras se muestra el resumen
+let proximoN = 2;                   // número interno del siguiente estudiante adicional
+let quitarPendiente = null;
+let finalizando = false;
 let yaImprimio = false;
 let codigoPreCargado = null;
 let registros = [];
@@ -106,11 +129,11 @@ fetch("nomina2026.json").then(r => r.ok ? r.json() : null).then(datos => {
   dl.replaceChildren(...Object.values(datos).map(a => el("option", { value: String(a.nombre ?? "") })));
 }).catch(err => console.error("Nómina 2026:", err));
 
-function buscarEnNomina(){
-  if (tipoEstudiante !== "antiguo" || !nomina2026) return;
-  const hint = document.getElementById("e_nomina_hint");
-  const rutVal = document.getElementById("e_rut").value.trim();
-  const nombreVal = document.getElementById("e_nombre").value.trim().toLowerCase();
+function buscarEnNomina(n = 1){
+  if (tipoDe(n) !== "antiguo" || !nomina2026) return;
+  const hint = $(eid(n, "nomina_hint"));
+  const rutVal = $(eid(n, "rut")).value.trim();
+  const nombreVal = $(eid(n, "nombre")).value.trim().toLowerCase();
   let alumno = null, rutKey = null;
   if (rutValido(rutVal)){
     rutKey = limpiarRut(rutVal);
@@ -121,19 +144,19 @@ function buscarEnNomina(){
     if (encontrado){ rutKey = encontrado[0]; alumno = encontrado[1]; }
   }
   if (!alumno){ hint.textContent = ""; hint.classList.remove("err"); return; }
-  const eNombre = document.getElementById("e_nombre");
+  const eNombre = $(eid(n, "nombre"));
   if (!eNombre.value.trim()) eNombre.value = alumno.nombre;
-  const eRut = document.getElementById("e_rut");
+  const eRut = $(eid(n, "rut"));
   if (!eRut.value.trim() && rutKey) eRut.value = formatearRut(rutKey);
-  const eComuna = document.getElementById("e_comuna");
+  const eComuna = $(eid(n, "comuna"));
   if (!eComuna.value.trim() && alumno.comuna) eComuna.value = alumno.comuna;
   const retirado = alumno.estado === "Retirado";
   hint.classList.toggle("err", retirado);
   hint.textContent = `📋 Encontrado en la nómina 2026: ${alumno.nombre} — Curso 2026: ${alumno.curso || "—"} — Comuna: ${alumno.comuna || "—"}`
     + (retirado ? " — ⚠️ Figura como RETIRADO en 2026." : "");
 }
-document.getElementById("e_rut").addEventListener("blur", buscarEnNomina);
-document.getElementById("e_nombre").addEventListener("blur", buscarEnNomina);
+document.getElementById("e_rut").addEventListener("blur", () => buscarEnNomina(1));
+document.getElementById("e_nombre").addEventListener("blur", () => buscarEnNomina(1));
 
 // Modo apoderado: se activa al abrir el link con ?apoderado (desde el QR)
 const MODO_APODERADO = new URLSearchParams(location.search).has("apoderado");
@@ -168,18 +191,18 @@ function iniciarFicha(tipo){
   codigoPreCargado = null;
   editandoKey = null;
   editandoOriginal = null;
+  solicitudActual = null; solicitudGuardada = null; solicitudPendiente = null;
+  quitarEstudiantesExtra();
   document.getElementById("ficha").reset();
   actualizarLugarTrabajo();
   document.querySelectorAll(".subfields").forEach(s=>s.classList.remove("show"));
-  document.querySelectorAll("input.bad,select.bad").forEach(i=>i.classList.remove("bad"));
-  document.getElementById("bannerErr").classList.remove("show");
+  document.querySelectorAll("#ficha .bad").forEach(i=>i.classList.remove("bad"));
+  ocultarErrores();
   document.getElementById("e_nomina_hint").textContent = "";
   document.getElementById("e_nomina_hint").classList.remove("err");
-  document.getElementById("tipoLabel").textContent = tipo==="nuevo" ? "Estudiante nuevo" : "Estudiante antiguo";
-  document.querySelectorAll(".solo-nuevo").forEach(el=>el.style.display = tipo==="nuevo" ? "" : "none");
-  document.querySelectorAll(".solo-antiguo").forEach(el=>el.style.display = tipo==="antiguo" ? "" : "none");
-  document.querySelector('#ficha button[type="submit"]').textContent = MODO_APODERADO ? "Enviar pre-matrícula →" : "Generar documentos de matrícula →";
+  fijarTipo(1, tipo);
   yaImprimio = false;
+  actualizarEtiquetas();
   mostrar("scr-form");
 }
 function volverInicio(){ mostrar("scr-home"); }
@@ -196,6 +219,139 @@ function toggleSub(grupo){
   const val = document.querySelector(`input[name="${grupo}"]:checked`)?.value;
   document.getElementById("sub_"+grupo).classList.toggle("show", val==="si");
 }
+
+/* ---------- Varios estudiantes: condición, añadir y quitar ---------- */
+// Muestra los campos que corresponden a la condición del estudiante n (nuevo o antiguo)
+function aplicarTipo(n, tipo){
+  const b = $("est" + n);
+  b.querySelectorAll(".solo-nuevo").forEach(x => x.style.display = tipo === "nuevo" ? "" : "none");
+  b.querySelectorAll(".solo-antiguo").forEach(x => x.style.display = tipo === "antiguo" ? "" : "none");
+  if (n === 1){
+    tipoEstudiante = tipo || tipoEstudiante;
+    $("tipoLabel").textContent = tipo === "nuevo" ? "Estudiante nuevo" : tipo === "antiguo" ? "Estudiante antiguo" : "";
+  }
+}
+function fijarTipo(n, tipo){ setRadio(`tipo_${n}`, tipo); aplicarTipo(n, tipoDe(n)); }
+function cambiarTipo(n){
+  aplicarTipo(n, tipoDe(n));
+  marcarGrupo(`tipo_${n}`, false);
+  const hint = $(eid(n, "nomina_hint")); if (hint){ hint.textContent = ""; hint.classList.remove("err"); }
+  buscarEnNomina(n);
+}
+// Resalta (o no) un grupo de botones de opción obligatorio
+function marcarGrupo(nombre, malo){
+  const r = document.querySelector(`input[name="${nombre}"]`);
+  if (r) r.closest(".radio-row").classList.toggle("bad", malo);
+}
+
+function etiquetaEst(n){
+  const i = bloques().indexOf(n) + 1;
+  const nombre = ($(eid(n, "nombre")) || {}).value?.trim();
+  return `Estudiante ${i}` + (nombre ? ` (${nombre})` : "");
+}
+
+// Crea la ficha del estudiante n copiando el bloque del estudiante 1 (sin sus datos) con los campos renombrados
+function crearBloqueEstudiante(n){
+  const c = $("est1").cloneNode(true);
+  c.id = "est" + n; c.dataset.n = String(n); c.classList.add("est-extra");
+  c.querySelectorAll("datalist").forEach(d => d.remove());
+  c.querySelectorAll("[id]").forEach(x => { x.id = x.id.replace(/^e_/, `e${n}_`).replace(/^sub_(rep|pie|salud)$/, `sub_$1${n}`); });
+  c.querySelectorAll("input[name]").forEach(x => {
+    if (/^(rep|pie|pieDoc|salud)$/.test(x.name)) x.name += n;
+    else if (x.name === "tipo_1") x.name = "tipo_" + n;
+  });
+  c.querySelectorAll("[data-args]").forEach(x => {
+    try{
+      const a = JSON.parse(x.dataset.args);
+      x.dataset.args = JSON.stringify(a.map(v => (v === "rep" || v === "pie" || v === "salud") ? v + n : (x.dataset.change === "cambiarTipo" ? n : v)));
+    }catch(e){}
+  });
+  // sin datos: vacío, sin marcas de error y con los sub-campos cerrados
+  c.querySelectorAll("input,select,textarea").forEach(x => {
+    if (x.type === "radio" || x.type === "checkbox") x.checked = false;
+    else if (x.tagName === "SELECT") x.selectedIndex = 0;
+    else x.value = "";
+  });
+  c.querySelectorAll(".bad").forEach(x => x.classList.remove("bad"));
+  c.querySelectorAll(".subfields").forEach(x => x.classList.remove("show"));
+  c.querySelectorAll(".hint").forEach(x => { if (/nomina_hint$/.test(x.id)) { x.textContent = ""; x.classList.remove("err"); } });
+  // encabezado propio con el botón «Quitar»
+  const leyenda = c.querySelector("legend");
+  leyenda.replaceChildren(el("b", { class: "est-titulo", texto: `Estudiante ${n}` }));
+  const cab = el("div", { class: "est-cab" },
+    el("span", { class: "est-nombre-vista", id: `est${n}_vista`, texto: "" }),
+    el("button", { type: "button", class: "est-quitar", texto: "Quitar este estudiante", datos: { click: "pedirQuitarEstudiante", args: JSON.stringify([n]) } }));
+  leyenda.after(cab);
+  // el parentesco y «vive con» pueden ser distintos para cada estudiante
+  const grid = c.querySelector(".grid.c2");
+  const selParent = el("select", { id: `e${n}_parentesco` },
+    el("option", { value: "", texto: "Igual al indicado en los datos del apoderado" }), ...PARENTESCOS.map(x => el("option", { value: x, texto: x })));
+  const selVive = el("select", { id: `e${n}_vive` },
+    el("option", { value: "", texto: "Igual al indicado en los datos del apoderado" }), el("option", { value: "si", texto: "Sí" }), el("option", { value: "no", texto: "No" }));
+  grid.append(
+    el("div", { class: "field" }, el("label", { texto: "Parentesco del apoderado con este estudiante" }), selParent),
+    el("div", { class: "field" }, el("label", { texto: "¿Vive con este estudiante?" }), selVive));
+  $("estudiantesExtra").append(c);
+  const rutInp = $(eid(n, "rut"));
+  rutInp.addEventListener("input", () => { rutInp.value = formatearRut(rutInp.value); });
+  rutInp.addEventListener("blur", () => buscarEnNomina(n));
+  $(eid(n, "nombre")).addEventListener("blur", () => buscarEnNomina(n));
+  $(eid(n, "nombre")).addEventListener("input", () => { const v = $(`est${n}_vista`); if (v) v.textContent = $(eid(n, "nombre")).value.trim(); });
+  aplicarTipo(n, "");
+  return n;
+}
+function anadirEstudiante(){
+  if (editandoKey || bloques().length >= MAX_ESTUDIANTES) return;
+  const n = crearBloqueEstudiante(proximoN++);
+  actualizarEtiquetas();
+  $("est" + n).scrollIntoView({ behavior: "smooth", block: "start" });
+  $(eid(n, "nombre")).focus({ preventScroll: true });
+}
+function pedirQuitarEstudiante(n){
+  if (!$("est" + n)) return;
+  quitarPendiente = n;
+  $("nombreQuitarEst").textContent = etiquetaEst(n);
+  abrir("ovQuitarEst");
+}
+function confirmarQuitarEstudiante(){
+  if (quitarPendiente && quitarPendiente !== 1 && $("est" + quitarPendiente)) $("est" + quitarPendiente).remove();
+  quitarPendiente = null;
+  cerrar("ovQuitarEst");
+  actualizarEtiquetas();
+}
+function quitarEstudiantesExtra(){ $("estudiantesExtra").replaceChildren(); proximoN = 2; quitarPendiente = null; }
+
+// Títulos «Estudiante N», contador, botón de añadir y texto del botón de envío
+function actualizarEtiquetas(){
+  const ns = bloques();
+  ns.forEach((n, i) => {
+    const t = document.querySelector(`#est${n} .est-titulo`);
+    if (t) t.textContent = n === 1 ? (ns.length > 1 ? "Estudiante 1" : "Datos del estudiante") : `Estudiante ${i + 1}`;
+  });
+  const lleno = ns.length >= MAX_ESTUDIANTES;
+  $("estAdd").style.display = editandoKey ? "none" : "";
+  $("btnAddEst").disabled = lleno;
+  $("estAddHint").textContent = lleno
+    ? `Se alcanzó el máximo de ${MAX_ESTUDIANTES} estudiantes por solicitud. Para más hermanos, haz una solicitud nueva.`
+    : ns.length > 1
+      ? `Estudiantes en esta solicitud: ${ns.length} de ${MAX_ESTUDIANTES}. Los datos del apoderado se piden una sola vez, más abajo.`
+      : `Si el apoderado tiene más hijos, puede matricularlos en esta misma solicitud (hasta ${MAX_ESTUDIANTES}). Los datos del apoderado se piden una sola vez.`;
+  refrescarBotonEnviar();
+}
+function refrescarBotonEnviar(){
+  const b = document.querySelector('#ficha button[type="submit"]');
+  if (!b) return;
+  b.textContent = editandoKey ? "Guardar cambios ✓"
+    : MODO_APODERADO ? "Enviar pre-matrícula →"
+    : bloques().length > 1 ? "Revisar la solicitud →"
+    : "Generar documentos de matrícula →";
+}
+// Aviso de errores: indica el estudiante y los campos a corregir (los datos de los demás no se tocan)
+function mostrarErrores(problemas){
+  $("bannerDetalle").replaceChildren(...problemas.map(t => el("li", { texto: t })));
+  $("bannerErr").classList.add("show");
+}
+function ocultarErrores(){ $("bannerDetalle").replaceChildren(); $("bannerErr").classList.remove("show"); }
 
 /* ---------- RUT chileno: formato + dígito verificador ---------- */
 function limpiarRut(r){ return r.replace(/[^0-9kK]/g,"").toUpperCase(); }
@@ -250,106 +406,186 @@ document.getElementById("e_rut").addEventListener("blur", ()=>{
 
 /* ---------- Validación ---------- */
 function marcar(el, malo){ el.classList.toggle("bad", malo); return !malo; }
-function validarFicha(){
-  let ok = true;
-  const req = id => { const el=document.getElementById(id); return marcar(el, !el.value.trim()) && ok; };
-  const v = id => document.getElementById(id).value.trim();
 
-  ok = marcar(document.getElementById("e_nombre"), !v("e_nombre")) && ok;
-  ok = marcar(document.getElementById("e_rut"), !rutValido(v("e_rut"))) && ok;
-  ok = marcar(document.getElementById("e_fnac"), !v("e_fnac")) && ok;
-  ok = marcar(document.getElementById("e_dir"), !v("e_dir")) && ok;
-  ok = marcar(document.getElementById("e_comuna"), !v("e_comuna")) && ok;
-  ok = marcar(document.getElementById("e_nacionalidad"), !v("e_nacionalidad")) && ok;
-  ok = marcar(document.getElementById("e_cel"), !v("e_cel")) && ok;
-
-  if (tipoEstudiante==="nuevo"){
-    ok = marcar(document.getElementById("e_procedencia"), !v("e_procedencia")) && ok;
-  } else {
-    ok = marcar(document.getElementById("e_cursoAnt"), !v("e_cursoAnt")) && ok;
-    ok = marcar(document.getElementById("e_letraAnt"), !v("e_letraAnt")) && ok;
+// Valida los campos del estudiante n; devuelve la lista de campos con problema (y los marca en rojo)
+function validarEstudiante(n){
+  const v = c => $(eid(n, c)).value.trim();
+  const malos = [];
+  const chk = (campo, etiqueta, malo) => { marcar($(eid(n, campo)), malo); if (malo) malos.push(etiqueta); };
+  const grupo = (nombre, etiqueta) => {
+    const falta = !document.querySelector(`input[name="${nombre}"]:checked`);
+    marcarGrupo(nombre, falta); if (falta) malos.push(etiqueta);
+  };
+  const tipo = tipoDe(n);
+  grupo(`tipo_${n}`, "Condición (nuevo o antiguo)");
+  chk("nombre", "Nombre", !v("nombre"));
+  chk("rut", "RUT", !rutValido(v("rut")));
+  chk("fnac", "Fecha de nacimiento", !v("fnac"));
+  chk("dir", "Dirección", !v("dir"));
+  chk("comuna", "Comuna", !v("comuna"));
+  chk("nacionalidad", "Nacionalidad", !v("nacionalidad"));
+  chk("cel", "Celular", !v("cel"));
+  if (tipo === "nuevo"){
+    chk("procedencia", "Colegio de procedencia", !v("procedencia"));
+  } else if (tipo === "antiguo"){
+    chk("cursoAnt", "Curso", !v("cursoAnt"));
+    chk("letraAnt", "Letra del curso", !v("letraAnt"));
   }
-
   // Radios obligatorios
-  for (const g of ["rep","pie","salud"]){
-    const sel = document.querySelector(`input[name="${g}"]:checked`);
-    if (!sel){ ok=false; document.getElementById("sub_"+g).previousElementSibling.querySelectorAll(".radio-pill span").forEach(s=>s.style.borderColor="var(--error)"); }
+  grupo(gname(n, "rep"), "¿Ha repetido algún curso?");
+  grupo(gname(n, "pie"), "PIE");
+  grupo(gname(n, "salud"), "¿Problema de salud?");
+  const radio = g => document.querySelector(`input[name="${gname(n, g)}"]:checked`)?.value;
+  if (radio("rep") === "si"){
+    chk("repCurso", "Curso que repitió", !v("repCurso"));
+    chk("repAnio", "Año en que repitió", !v("repAnio"));
   }
-  if (document.querySelector('input[name="rep"]:checked')?.value==="si"){
-    ok = marcar(document.getElementById("e_repCurso"), !v("e_repCurso")) && ok;
-    ok = marcar(document.getElementById("e_repAnio"), !v("e_repAnio")) && ok;
+  if (radio("pie") === "si"){
+    chk("pieDiag", "Diagnóstico PIE", !v("pieDiag"));
+    grupo(gname(n, "pieDoc"), "Documentación PIE");
   }
-  if (document.querySelector('input[name="pie"]:checked')?.value==="si"){
-    ok = marcar(document.getElementById("e_pieDiag"), !v("e_pieDiag")) && ok;
-    if (!document.querySelector('input[name="pieDoc"]:checked')) ok=false;
-  }
-  if (document.querySelector('input[name="salud"]:checked')?.value==="si"){
-    ok = marcar(document.getElementById("e_saludDet"), !v("e_saludDet")) && ok;
-  }
+  if (radio("salud") === "si") chk("saludDet", "Problema de salud", !v("saludDet"));
+  return malos;
+}
 
-  // Apoderado titular
-  ok = marcar(document.getElementById("a_nombre"), !v("a_nombre")) && ok;
-  ok = marcar(document.getElementById("a_rut"), !rutValido(v("a_rut"))) && ok;
-  ok = marcar(document.getElementById("a_edad"), !v("a_edad")) && ok;
-  ok = marcar(document.getElementById("a_dir"), !v("a_dir")) && ok;
-  ok = marcar(document.getElementById("a_comuna"), !v("a_comuna")) && ok;
-  ok = marcar(document.getElementById("a_nacionalidad"), !v("a_nacionalidad")) && ok;
-  ok = marcar(document.getElementById("a_cel"), !v("a_cel")) && ok;
-  ok = marcar(document.getElementById("a_parentesco"), !v("a_parentesco")) && ok;
+// Valida toda la solicitud. Devuelve { ok, problemas }: cada problema nombra al estudiante (o al apoderado) y los campos.
+function validarFicha(){
+  const problemas = [];
+  bloques().forEach(n => { const m = validarEstudiante(n); if (m.length) problemas.push(`${etiquetaEst(n)}: ${m.join(", ")}`); });
+
+  const v = id => document.getElementById(id).value.trim();
+  const malosA = [];
+  const chk = (id, etiqueta, malo, lista) => { marcar(document.getElementById(id), malo); if (malo) lista.push(etiqueta); };
+  chk("a_nombre", "Nombre", !v("a_nombre"), malosA);
+  chk("a_rut", "RUT", !rutValido(v("a_rut")), malosA);
+  chk("a_edad", "Edad", !v("a_edad"), malosA);
+  chk("a_dir", "Dirección", !v("a_dir"), malosA);
+  chk("a_comuna", "Comuna", !v("a_comuna"), malosA);
+  chk("a_nacionalidad", "Nacionalidad", !v("a_nacionalidad"), malosA);
+  chk("a_cel", "Celular", !v("a_cel"), malosA);
+  chk("a_parentesco", "Parentesco", !v("a_parentesco"), malosA);
+  if (malosA.length) problemas.push(`Apoderado titular: ${malosA.join(", ")}`);
 
   // Suplente (si se registra)
   if (document.querySelector('input[name="sup"]:checked')?.value==="si"){
-    ok = marcar(document.getElementById("s_nombre"), !v("s_nombre")) && ok;
-    ok = marcar(document.getElementById("s_rut"), !rutValido(v("s_rut"))) && ok;
-    ok = marcar(document.getElementById("s_edad"), !v("s_edad")) && ok;
-    ok = marcar(document.getElementById("s_dir"), !v("s_dir")) && ok;
-    ok = marcar(document.getElementById("s_comuna"), !v("s_comuna")) && ok;
-    ok = marcar(document.getElementById("s_nacionalidad"), !v("s_nacionalidad")) && ok;
-    ok = marcar(document.getElementById("s_cel"), !v("s_cel")) && ok;
-    ok = marcar(document.getElementById("s_parentesco"), !v("s_parentesco")) && ok;
+    const malosS = [];
+    chk("s_nombre", "Nombre", !v("s_nombre"), malosS);
+    chk("s_rut", "RUT", !rutValido(v("s_rut")), malosS);
+    chk("s_edad", "Edad", !v("s_edad"), malosS);
+    chk("s_dir", "Dirección", !v("s_dir"), malosS);
+    chk("s_comuna", "Comuna", !v("s_comuna"), malosS);
+    chk("s_nacionalidad", "Nacionalidad", !v("s_nacionalidad"), malosS);
+    chk("s_cel", "Celular", !v("s_cel"), malosS);
+    chk("s_parentesco", "Parentesco", !v("s_parentesco"), malosS);
+    if (malosS.length) problemas.push(`Apoderado suplente: ${malosS.join(", ")}`);
   }
-  return ok;
+  // Caracteres no permitidos (< >): el servidor también los rechaza, pero así se avisa ANTES de generar los documentos
+  const conSimbolos = new Map();
+  document.querySelectorAll('#ficha input[type="text"], #ficha input[type="tel"], #ficha input[type="email"], #ficha textarea').forEach(campo => {
+    const malo = /[<>]/.test(campo.value);
+    if (campo.id === "sitio_web") return;
+    if (!malo) return;
+    campo.classList.add("bad");
+    const bloque = campo.closest(".est-bloque");
+    const quien = bloque ? etiquetaEst(+bloque.dataset.n) : /^s_/.test(campo.id) ? "Apoderado suplente" : "Apoderado titular";
+    conSimbolos.set(quien, (conSimbolos.get(quien) || 0) + 1);
+  });
+  conSimbolos.forEach((n, quien) => problemas.push(`${quien}: los símbolos < y > no están permitidos (${n} campo${n > 1 ? "s" : ""})`));
+  // RUT repetido entre estudiantes de la misma solicitud
+  const vistos = new Map();
+  bloques().forEach(n => {
+    const r = limpiarRut($(eid(n, "rut")).value);
+    if (r.length >= 7 && vistos.has(r)){ marcar($(eid(n, "rut")), true); problemas.push(`${etiquetaEst(n)}: el RUT está repetido (ya se usó en ${etiquetaEst(vistos.get(r))})`); }
+    else if (r.length >= 7) vistos.set(r, n);
+  });
+  return { ok: problemas.length === 0, problemas };
 }
 
 /* ---------- Generar ficha + memos ---------- */
-function recolectarDatos(){
+// Datos de un estudiante (n) tal como se guardan
+function leerEstudiante(n){
+  const v = c => $(eid(n, c)).value.trim();
+  const radio = g => document.querySelector(`input[name="${gname(n, g)}"]:checked`)?.value || "";
+  const tipo = tipoDe(n);
+  return {
+    tipo,
+    estudiante: {
+      nombre: v("nombre"), rut: v("rut"), fnac: v("fnac"), direccion: v("dir"),
+      comuna: v("comuna"), nacionalidad: v("nacionalidad"),
+      celular: v("cel"), correo: v("mail"),
+      procedencia: tipo==="nuevo" ? v("procedencia") : "",
+      cursoMatricula: tipo==="antiguo" ? (v("cursoAnt")+" "+v("letraAnt").toUpperCase()) : v("cursoNuevo"),
+      repitencia: radio("rep"), repCurso: v("repCurso"), repAnio: v("repAnio"),
+      pie: radio("pie"), pieDiagnostico: v("pieDiag"), pieDocumentacion: radio("pieDoc"),
+      salud: radio("salud"), saludDetalle: v("saludDet"),
+      observaciones: v("obs")
+    }
+  };
+}
+function leerApoderado(){
   const v = id => document.getElementById(id).value.trim();
   const radio = n => document.querySelector(`input[name="${n}"]:checked`)?.value || "";
-  const conSup = radio("sup")==="si";
+  return { nombre: v("a_nombre"), rut: v("a_rut"), edad: v("a_edad"), direccion: v("a_dir"), comuna: v("a_comuna"), nacionalidad: v("a_nacionalidad"), celular: v("a_cel"), correo: v("a_mail"),
+    parentesco: v("a_parentesco"), viveConEstudiante: radio("a_vive"), nivelEducacional: v("a_nivel"),
+    situacionLaboral: v("a_laboral"), lugarTrabajo: v("a_laboral").startsWith("Trabaja") ? radio("a_lugar") : "" };
+}
+function leerSuplente(){
+  const v = id => document.getElementById(id).value.trim();
+  const radio = n => document.querySelector(`input[name="${n}"]:checked`)?.value || "";
+  return radio("sup")==="si" ? { nombre: v("s_nombre"), rut: v("s_rut"), edad: v("s_edad"), direccion: v("s_dir"), comuna: v("s_comuna"), nacionalidad: v("s_nacionalidad"), celular: v("s_cel"), correo: v("s_mail"), parentesco: v("s_parentesco"), viveConEstudiante: radio("s_vive") } : null;
+}
+// Ficha de UN estudiante (estudiante 1): la usan la edición desde el panel y la pre-matrícula individual
+function recolectarDatos(){
+  return { ...leerEstudiante(1), apoderado: leerApoderado(), suplente: leerSuplente() };
+}
+// Solicitud completa: apoderado y suplente una sola vez + lista de estudiantes
+function recolectarSolicitud(){
   return {
-    tipo: tipoEstudiante,
-    estudiante: {
-      nombre: v("e_nombre"), rut: v("e_rut"), fnac: v("e_fnac"), direccion: v("e_dir"),
-      comuna: v("e_comuna"), nacionalidad: v("e_nacionalidad"),
-      celular: v("e_cel"), correo: v("e_mail"),
-      procedencia: tipoEstudiante==="nuevo" ? v("e_procedencia") : "",
-      cursoMatricula: tipoEstudiante==="antiguo" ? (v("e_cursoAnt")+" "+v("e_letraAnt").toUpperCase()) : "",
-      repitencia: radio("rep"), repCurso: v("e_repCurso"), repAnio: v("e_repAnio"),
-      pie: radio("pie"), pieDiagnostico: v("e_pieDiag"), pieDocumentacion: radio("pieDoc"),
-      salud: radio("salud"), saludDetalle: v("e_saludDet"),
-      observaciones: v("e_obs")
-    },
-    apoderado: { nombre: v("a_nombre"), rut: v("a_rut"), edad: v("a_edad"), direccion: v("a_dir"), comuna: v("a_comuna"), nacionalidad: v("a_nacionalidad"), celular: v("a_cel"), correo: v("a_mail"),
-      parentesco: v("a_parentesco"), viveConEstudiante: radio("a_vive"), nivelEducacional: v("a_nivel"),
-      situacionLaboral: v("a_laboral"), lugarTrabajo: v("a_laboral").startsWith("Trabaja") ? radio("a_lugar") : "" },
-    suplente: conSup ? { nombre: v("s_nombre"), rut: v("s_rut"), edad: v("s_edad"), direccion: v("s_dir"), comuna: v("s_comuna"), nacionalidad: v("s_nacionalidad"), celular: v("s_cel"), correo: v("s_mail"), parentesco: v("s_parentesco"), viveConEstudiante: radio("s_vive") } : null
+    apoderado: leerApoderado(),
+    suplente: leerSuplente(),
+    estudiantes: bloques().map(n => {
+      const e = leerEstudiante(n);
+      const x = { tipo: e.tipo, estudiante: e.estudiante };
+      if (n !== 1){
+        const p = $(eid(n, "parentesco")).value, vv = $(eid(n, "vive")).value;
+        if (p) x.parentesco = p;
+        if (vv) x.viveConEstudiante = vv;
+      }
+      return x;
+    })
   };
+}
+// Fichas individuales (una por estudiante) a partir de la solicitud. Misma regla que la base de datos.
+function fichasDeSolicitud(sol){
+  return sol.estudiantes.map(x => {
+    const apoderado = { ...sol.apoderado };
+    if (x.parentesco) apoderado.parentesco = x.parentesco;
+    if (x.viveConEstudiante) apoderado.viveConEstudiante = x.viveConEstudiante;
+    return { tipo: x.tipo, estudiante: x.estudiante, apoderado, suplente: sol.suplente };
+  });
+}
+function nuevoUuid(){
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16)); b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128;
+  const h = [...b].map(x => x.toString(16).padStart(2, "0")).join("");
+  return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
 }
 
 document.getElementById("ficha").addEventListener("submit", async e=>{
   e.preventDefault();
-  if (!validarFicha()){
-    document.getElementById("bannerErr").classList.add("show");
+  const val = validarFicha();
+  if (!val.ok){
+    mostrarErrores(val.problemas);
     window.scrollTo({top:0,behavior:"smooth"});
     return;
   }
-  document.getElementById("bannerErr").classList.remove("show");
-  const datos = recolectarDatos();
+  ocultarErrores();
+  const boton = e.target.querySelector('button[type="submit"]');
 
-  // Modo edición: actualizar una matrícula existente en vez de crear una nueva
+  // Modo edición: actualizar UNA matrícula existente (no se tocan sus hermanos)
   if (editandoKey){
-    const btnGuardar = e.target.querySelector('button[type="submit"]');
-    btnGuardar.disabled = true; btnGuardar.textContent = "Guardando…";
+    const datos = recolectarDatos();
+    boton.disabled = true; boton.textContent = "Guardando…";
     try{
       await rpc("actualizar_matricula", { p_clave: tokenAdmin, p_id: editandoKey, p_ficha: { ...editandoOriginal, ...datos } });
       aviso("Cambios guardados", "Se actualizaron los datos de la matrícula.");
@@ -359,40 +595,94 @@ document.getElementById("ficha").addEventListener("submit", async e=>{
     }catch(err){
       aviso("No se pudo guardar", err.message);
     }finally{
-      btnGuardar.disabled = false; btnGuardar.textContent = "Generar documentos de matrícula →";
+      boton.disabled = false; refrescarBotonEnviar();
     }
     return;
   }
 
+  const sol = recolectarSolicitud();
+
   // Modo apoderado: guardar pre-matrícula y mostrar código
   if (MODO_APODERADO){
-    await guardarPrematricula(datos, e.target.querySelector('button[type="submit"]'));
+    await guardarPrematricula(sol, boton);
     return;
   }
 
-  // Modo profesor: obtener folio secuencial
-  const btnGenerar = e.target.querySelector('button[type="submit"]');
-  btnGenerar.disabled = true; btnGenerar.textContent = "Generando ficha…";
-  let numeroFolio = null;
+  // Varios estudiantes: primero el resumen para revisar
+  if (sol.estudiantes.length > 1){ mostrarResumen(sol); return; }
+  await prepararDocumentos(sol, boton);
+});
+
+// Pide los folios (uno por estudiante) y arma los documentos. Con el mismo id de solicitud los folios se reutilizan.
+async function prepararDocumentos(sol, boton){
+  const textoOriginal = boton.textContent;
+  boton.disabled = true; boton.textContent = "Generando ficha…";
   try{
-    numeroFolio = String(await rpc("obtener_folio", { p_clave: tokenInterno }));
+    const n = sol.estudiantes.length;
+    if (!solicitudActual || solicitudActual.cantidad !== n || solicitudActual.guardada){
+      solicitudActual = { id: nuevoUuid(), cantidad: n, folios: null, guardada: false };
+    }
+    const r = await rpc("reservar_folios", { p_clave: tokenInterno, p_solicitud: solicitudActual.id, p_cantidad: n });
+    solicitudActual.folios = r.folios;
+    const fecha = new Date().toLocaleString("es-CL");
+    fichasActuales = fichasDeSolicitud(sol).map((f, i) => ({ folio: String(r.folios[i]), fechaRegistro: fecha, ...f }));
+    fichaActual = fichasActuales[0];
+    yaImprimio = false;
+    renderMemos();
+    mostrar("scr-memos");
   }catch(err){
     console.error("Folio:", err);
     aviso("No se pudo generar el número de ficha", "No fue posible pedir el folio a la base de datos. " + err.message);
+  }finally{
+    boton.disabled = false; boton.textContent = textoOriginal;
   }
-  btnGenerar.disabled = false; btnGenerar.textContent = "Generar documentos de matrícula →";
-  if (!numeroFolio) return; // no continuar sin folio válido
+}
 
-  fichaActual = { folio: numeroFolio, fechaRegistro: new Date().toLocaleString("es-CL"), ...datos };
-  yaImprimio = false;
-  renderMemos();
-  mostrar("scr-memos");
-});
+/* ---------- Resumen de una solicitud con varios estudiantes ---------- */
+function filaResumen(etiqueta, valor){
+  return el("div", { class: "resumen-fila" }, el("b", { texto: etiqueta + ":" }), el("span", { texto: valor || "—" }));
+}
+function mostrarResumen(sol){
+  solicitudPendiente = sol;
+  const A = sol.apoderado;
+  $("resumenApoderado").replaceChildren(el("div", { class: "resumen-card" },
+    el("h3", { texto: "Apoderado titular (datos compartidos por todos los estudiantes)" }),
+    filaResumen("Nombre", A.nombre), filaResumen("RUT", A.rut), filaResumen("Celular", A.celular),
+    filaResumen("Correo (aquí llegará UN solo correo con todos los certificados)", A.correo || "No registrado: no se enviará correo"),
+    filaResumen("Parentesco (general)", A.parentesco), sol.suplente ? filaResumen("Suplente", sol.suplente.nombre) : ""));
+  const fichas = fichasDeSolicitud(sol), ns = bloques();
+  $("resumenEstudiantes").replaceChildren(...sol.estudiantes.map((x, i) => {
+    const E = x.estudiante, F = fichas[i];
+    const pie = E.pie === "si" ? (E.pieDocumentacion === "si" ? "Documentación PIE entregada" : "Documentación PIE pendiente de entregar") : "No pertenece al PIE";
+    return el("div", { class: "resumen-card" },
+      el("h3", {}, el("span", { texto: `Estudiante ${i + 1}` }), document.createTextNode(E.nombre)),
+      filaResumen("RUT", E.rut),
+      el("div", { class: "resumen-fila" }, el("b", { texto: "Condición:" }), el("span", { class: "pill " + x.tipo, texto: x.tipo })),
+      filaResumen("Curso 2027", E.cursoMatricula || "No indicado"),
+      x.tipo === "nuevo" ? filaResumen("Colegio de procedencia", E.procedencia) : "",
+      filaResumen("Parentesco con este estudiante", F.apoderado.parentesco),
+      filaResumen("Documentos requeridos", `3 autorizaciones, ficha de antecedentes y certificado PDF (se generan al continuar). ${pie}.`),
+      el("div", { class: "resumen-fila" }, el("b", { texto: "Validación:" }), el("span", { class: "estado ok", texto: "✔ Campos obligatorios completos" })),
+      el("div", { class: "resumen-acciones" }, el("button", { type: "button", class: "btn btn-ghost", texto: "✏️ Editar este estudiante", datos: { click: "editarEstudianteResumen", args: JSON.stringify([ns[i]]) } })));
+  }));
+  mostrar("scr-resumen");
+}
+function editarEstudianteResumen(n){
+  mostrar("scr-form");
+  const b = $("est" + n);
+  if (b) b.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+async function confirmarResumen(){
+  if (!solicitudPendiente) return;
+  await prepararDocumentos(solicitudPendiente, $("btnConfirmarResumen"));
+}
 
 /* ---------- Pre-matrícula (apoderados vía QR) ---------- */
-async function guardarPrematricula(datos, btn){
+async function guardarPrematricula(sol, btn){
   btn.disabled = true; btn.textContent = "Enviando…";
   try{
+    // Un estudiante: formato de siempre. Varios: una sola solicitud con todos (un solo código).
+    const datos = sol.estudiantes.length === 1 ? fichasDeSolicitud(sol)[0] : sol;
     // «_hp» es un campo trampa invisible: las personas lo dejan vacío, algunos robots lo llenan
     const codigo = await rpc("crear_prematricula", { p_datos: { ...datos, _hp: document.getElementById("sitio_web").value } });
     // 6 caracteres se muestran como XXX-XXX; los códigos antiguos de 4 dígitos se muestran igual
@@ -401,7 +691,7 @@ async function guardarPrematricula(datos, btn){
   }catch(err){
     aviso("No se pudo enviar", err.message);
   }finally{
-    btn.disabled = false; btn.textContent = "Enviar pre-matrícula →";
+    btn.disabled = false; refrescarBotonEnviar();
   }
 }
 
@@ -435,23 +725,41 @@ function setRadio(nombre, valor){
   const el = document.querySelector(`input[name="${nombre}"][value="${valor}"]`);
   if (el){ el.checked = true; }
 }
-function llenarFicha(d, mensaje){
-  iniciarFicha(d.tipo);
-  const set = (id,val)=>{ document.getElementById(id).value = val || ""; };
-  const E=d.estudiante, A=d.apoderado, S=d.suplente;
-  set("e_nombre",E.nombre); set("e_rut",E.rut); set("e_fnac",E.fnac); set("e_dir",E.direccion);
-  set("e_comuna",E.comuna); set("e_nacionalidad",E.nacionalidad);
-  set("e_cel",E.celular); set("e_mail",E.correo); set("e_obs",E.observaciones);
-  if (d.tipo==="nuevo"){ set("e_procedencia",E.procedencia); }
+// Una ficha de siempre o una solicitud con varios estudiantes → siempre { apoderado, suplente, estudiantes:[…] }
+function normalizarSolicitud(d){
+  if (Array.isArray(d.estudiantes)) return { apoderado: d.apoderado || {}, suplente: d.suplente || null, estudiantes: d.estudiantes.slice(0, MAX_ESTUDIANTES) };
+  return { apoderado: d.apoderado || {}, suplente: d.suplente || null, estudiantes: [{ tipo: d.tipo, estudiante: d.estudiante || {} }] };
+}
+// Rellena los campos del estudiante n con los datos x = { tipo, estudiante, parentesco?, viveConEstudiante? }
+function llenarEstudiante(n, x){
+  const E = x.estudiante || {};
+  const set = (c, val) => { $(eid(n, c)).value = val || ""; };
+  fijarTipo(n, x.tipo);
+  set("nombre", E.nombre); set("rut", E.rut); set("fnac", E.fnac); set("dir", E.direccion);
+  set("comuna", E.comuna); set("nacionalidad", E.nacionalidad);
+  set("cel", E.celular); set("mail", E.correo); set("obs", E.observaciones);
+  if (x.tipo === "nuevo"){ set("procedencia", E.procedencia); set("cursoNuevo", E.cursoMatricula); }
   else {
     const curso = (E.cursoMatricula || E.cursoAnterior || "").trim();
     const partes = curso.split(" ");
     const letra = partes.length>2 ? partes.pop() : "";
-    set("e_cursoAnt", partes.join(" ")); set("e_letraAnt", letra);
+    set("cursoAnt", partes.join(" ")); set("letraAnt", letra);
   }
-  setRadio("rep",E.repitencia); toggleSub("rep"); set("e_repCurso",E.repCurso); set("e_repAnio",E.repAnio);
-  setRadio("pie",E.pie); toggleSub("pie"); set("e_pieDiag",E.pieDiagnostico); setRadio("pieDoc",E.pieDocumentacion);
-  setRadio("salud",E.salud); toggleSub("salud"); set("e_saludDet",E.saludDetalle);
+  const g = gname;
+  setRadio(g(n,"rep"), E.repitencia); toggleSub(g(n,"rep")); set("repCurso", E.repCurso); set("repAnio", E.repAnio);
+  setRadio(g(n,"pie"), E.pie); toggleSub(g(n,"pie")); set("pieDiag", E.pieDiagnostico); setRadio(g(n,"pieDoc"), E.pieDocumentacion);
+  setRadio(g(n,"salud"), E.salud); toggleSub(g(n,"salud")); set("saludDet", E.saludDetalle);
+  if (n !== 1){ $(eid(n, "parentesco")).value = x.parentesco || ""; $(eid(n, "vive")).value = x.viveConEstudiante || ""; const v = $(`est${n}_vista`); if (v) v.textContent = E.nombre || ""; }
+}
+function llenarFicha(d, mensaje){
+  const sol = normalizarSolicitud(d);
+  iniciarFicha(sol.estudiantes[0].tipo);
+  const set = (id,val)=>{ document.getElementById(id).value = val || ""; };
+  const A=sol.apoderado, S=sol.suplente;
+  // estudiante 1 y los adicionales (si la pre-matrícula trae varios)
+  for (let i = 1; i < sol.estudiantes.length; i++) crearBloqueEstudiante(proximoN++);
+  const ns = bloques();
+  sol.estudiantes.forEach((x, i) => llenarEstudiante(ns[i], x));
   set("a_nombre",A.nombre); set("a_rut",A.rut); set("a_edad",A.edad); set("a_dir",A.direccion);
   set("a_comuna",A.comuna); set("a_nacionalidad",A.nacionalidad);
   set("a_cel",A.celular); set("a_mail",A.correo);
@@ -463,9 +771,13 @@ function llenarFicha(d, mensaje){
     set("s_dir",S.direccion); set("s_comuna",S.comuna); set("s_nacionalidad",S.nacionalidad);
     set("s_cel",S.celular); set("s_mail",S.correo); set("s_parentesco",S.parentesco); setRadio("s_vive",S.viveConEstudiante);
   }
-  aviso("Datos cargados", mensaje || "Se cargaron los datos de la pre-matrícula. Revísalos junto al apoderado antes de generar los documentos.");
+  actualizarEtiquetas();
+  aviso("Datos cargados", mensaje || (sol.estudiantes.length > 1
+    ? `Se cargaron los datos de la pre-matrícula (${sol.estudiantes.length} estudiantes). Revísalos junto al apoderado antes de continuar.`
+    : "Se cargaron los datos de la pre-matrícula. Revísalos junto al apoderado antes de generar los documentos."));
 }
 
+// Edita UNA matrícula (un estudiante). Sus hermanos de la misma solicitud no se tocan.
 function editarMatricula(key){
   const r = registros.find(x => x._key === key);
   if (!r) return;
@@ -475,7 +787,7 @@ function editarMatricula(key){
   );
   editandoKey = key;
   editandoOriginal = { folio: r.folio, fechaRegistro: r.fechaRegistro };
-  document.querySelector('#ficha button[type="submit"]').textContent = "Guardar cambios ✓";
+  actualizarEtiquetas();
 }
 
 function mostrarQR(){
@@ -543,7 +855,7 @@ function fichaAntecedentesInterior(f){
   const E = f.estudiante, A = f.apoderado, S = f.suplente;
   const cursoOProcedencia = f.tipo==="antiguo"
     ? filaDato("Curso 2027", E.cursoMatricula || E.cursoAnterior || "—")
-    : filaDato("Colegio de procedencia", E.procedencia);
+    : h`${filaDato("Colegio de procedencia", E.procedencia)}${E.cursoMatricula ? filaDato("Curso 2027", E.cursoMatricula) : ""}`;
   return h`
     <h2 class="ficha-h2">Ficha de Antecedentes del Estudiante</h2>
     <div class="ficha-top">
@@ -599,17 +911,21 @@ function fichaAntecedentesInterior(f){
     </div>`;
 }
 
-function renderMemos(){
-  const memos = textosMemos(fichaActual);
-  const f = fichaActual;
-  document.getElementById("memosPantalla").innerHTML = String(h`${memos.map(m => h`
+// Documentos en pantalla de UN estudiante (3 autorizaciones + ficha de antecedentes)
+function htmlMemosPantalla(f){
+  const memos = textosMemos(f);
+  return h`${memos.map(m => h`
     <div class="memo-card">
       <h3>${m.titulo}</h3>
       <div>${m.cuerpo}</div>
       <p style="margin-top:16px">${m.fecha}</p>
       <div class="firma"><span class="linea-firma">${m.firma}</span></div>
-    </div>`)}<div class="memo-card">${fichaAntecedentesInterior(f)}</div>`);
-  document.getElementById("printArea").innerHTML = String(h`${memos.map(m => h`
+    </div>`)}<div class="memo-card">${fichaAntecedentesInterior(f)}</div>`;
+}
+// Hojas de impresión de UN estudiante
+function htmlMemosImpresion(f){
+  const memos = textosMemos(f);
+  return h`${memos.map(m => h`
     <div class="print-memo">
       <div class="encabezado">
         <div class="colegio">${NOMBRE_COLEGIO}</div>
@@ -623,7 +939,13 @@ function renderMemos(){
         <img src="${LOGO_SRC}" alt="Logo">
         <div class="pie-texto">${NOMBRE_COLEGIO}<br>Proceso de Matrícula 2027 — Ficha ${f.folio}</div>
       </div>
-    </div>`)}${htmlFichaImpresa(f)}`);
+    </div>`)}${htmlFichaImpresa(f)}`;
+}
+function renderMemos(){
+  const fichas = fichasActuales;
+  const varios = fichas.length > 1;
+  document.getElementById("memosPantalla").innerHTML = String(h`${fichas.map((f, i) => h`${varios ? h`<h3 class="resumen-card" style="padding:12px 18px"><span class="sol-chip">Estudiante ${i + 1} de ${fichas.length}</span> ${f.estudiante.nombre} — Ficha ${f.folio}</h3>` : ""}${htmlMemosPantalla(f)}`)}`);
+  document.getElementById("printArea").innerHTML = String(h`${fichas.map(f => htmlMemosImpresion(f))}`);
 }
 
 // Hoja impresa de la «Ficha de antecedentes del estudiante» (se usa al generar los documentos
@@ -656,7 +978,7 @@ function imprimirMemos(){
 /* ---------- Comprobante de matrícula en PDF (para adjuntar al correo) ---------- */
 function generarComprobantePDFBase64(f){
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit: "mm", format: "letter" });
+  const doc = new jsPDF({ unit: "mm", format: "letter", compress: true });   // compress: sin esto jsPDF 4.x triplica el tamaño
   const E = f.estudiante, A = f.apoderado;
   const ancho = doc.internal.pageSize.getWidth();
 
@@ -671,7 +993,7 @@ function generarComprobantePDFBase64(f){
 
   const cursoTxt = f.tipo === "antiguo"
     ? `en el curso ${E.cursoMatricula || E.cursoAnterior || "—"}`
-    : `proveniente del establecimiento ${E.procedencia || "—"}`;
+    : `proveniente del establecimiento ${E.procedencia || "—"}` + (E.cursoMatricula ? `, para cursar ${E.cursoMatricula}` : "");
   const cuerpo =
 `Se certifica que con fecha ${f.fechaRegistro}, el/la estudiante ${E.nombre}, RUT ${E.rut}, `+
 `fue matriculado(a) en el Instituto Comercial Alberto Valenzuela Llanos de San Fernando, `+
@@ -697,11 +1019,77 @@ function generarComprobantePDFBase64(f){
 }
 
 /* ---------- Finalizar: guardar + correo ---------- */
-async function finalizarMatricula(){
-  const btn = document.getElementById("btnFinalizar");
-  btn.disabled = true; btn.textContent = "Guardando…";
+// Mensajes para el personal según la respuesta del script de correo (apps-script/Code.gs)
+const ERRORES_CORREO = {
+  sesion_invalida: "La sesión venció. Cierra el acceso, vuelve a ingresar y reintenta el envío.",
+  solicitud_invalida: "La solicitud no es válida.",
+  certificados_invalidos: "Los certificados PDF no tienen el formato esperado.",
+  demasiados_certificados: "Hay más certificados que el máximo permitido por correo.",
+  pdf_invalido: "Uno de los certificados PDF no es un archivo válido.",
+  pdf_demasiado_grande: "Un certificado PDF supera el tamaño permitido.",
+  adjuntos_excedidos: "Los certificados superan el tamaño total permitido para un solo correo.",
+  certificados_no_coinciden: "Los certificados no coinciden con las matrículas guardadas de la solicitud.",
+  limite_diario: "Se alcanzó el límite de correos del día. Reintenta mañana.",
+  limite_destinatario: "Ya se enviaron los correos permitidos hoy a esa dirección. Reintenta mañana.",
+  destinatario_no_autorizado: "El destinatario no está autorizado en este entorno de pruebas.",
+  correo_invalido: "El correo del apoderado no es válido. Corrígelo desde el panel y reintenta.",
+  en_proceso: "Ya hay un envío en curso para esta solicitud. Espera unos minutos y reintenta.",
+  demasiados_reintentos: "Se alcanzó el máximo de reintentos para esta solicitud. Avisa a la administración.",
+  servicio_no_disponible: "El servicio de matrículas no respondió. Reintenta en unos minutos.",
+  envio_fallido: "El servicio de correo no pudo enviar el mensaje. Reintenta en unos minutos.",
+  sin_correo: "El apoderado no registró correo.",
+  configuracion: "El envío de correos no está bien configurado. Avisa a la administración.",
+  solicitud_no_guardada: "La solicitud aún no está guardada."
+};
+
+// Genera un certificado PDF por estudiante y envía UN solo correo con todos. Las matrículas ya están guardadas:
+// si algo falla aquí NO se pierde nada y se puede reintentar sin duplicar (la solicitud lleva su identificador).
+async function enviarCorreoSolicitud(solicitudId, fichas, token){
+  const correo = fichas[0].apoderado.correo;
+  const n = fichas.length;
+  if (!correo) return { estado: "sin_correo", msg: "El apoderado no registró correo, por lo que no se envió comprobante por email." };
+  if (!correoListo) return { estado: "no_configurado", msg: "Los datos se guardaron. El envío automático de correos no está configurado todavía." };
+  // 1) un PDF independiente por estudiante; si falla uno, no se envía ninguno
+  let certificados;
   try{
-    await rpc("guardar_matricula", { p_clave: tokenInterno, p_ficha: fichaActual });
+    certificados = fichas.map(f => ({ folio: String(f.folio), pdfBase64: generarComprobantePDFBase64(f) }));
+  }catch(err){
+    console.error("Comprobante PDF:", err);
+    return { estado: "pdf", reintentable: true, msg: "Las matrículas se guardaron, pero no se pudo generar uno de los certificados PDF. No se envió ningún correo. Puedes reintentar el envío." };
+  }
+  // 2) tamaños comprobados ANTES de enviar
+  const total = certificados.reduce((a, c) => a + c.pdfBase64.length, 0);
+  if (certificados.some(c => c.pdfBase64.length > MAX_PDF_BASE64) || total > MAX_TOTAL_BASE64){
+    return { estado: "tamano", msg: "Las matrículas se guardaron, pero los certificados superan el tamaño permitido para un correo. No se envió ninguno. Avisa a la administración." };
+  }
+  // 3) envío (el script comprueba la sesión, las matrículas guardadas y los límites)
+  try{
+    const resp = await fetch(APPS_SCRIPT_URL, { method: "POST", body: JSON.stringify({ token, solicitudId, certificados }) });
+    const data = await resp.json();
+    if (data.ok){
+      return { estado: "enviado", msg: data.ya_enviado
+        ? "El correo de esta solicitud ya se había enviado antes; no se repitió. Destinatario: " + correo + "."
+        : n > 1 ? `Se envió UN correo con los ${n} certificados de matrícula (PDF adjuntos) al correo ${correo}.`
+                : "Se envió el certificado de matrícula (con PDF adjunto) al correo " + correo + "." };
+    }
+    if (data.error === "ya_enviado") return { estado: "enviado", msg: "El correo de esta solicitud ya se había enviado antes; no se repitió. Destinatario: " + correo + "." };
+    console.error("Correo:", data.error);
+    return { estado: "error", reintentable: true, msg: "Las matrículas se guardaron, pero el correo NO se envió. " + (ERRORES_CORREO[data.error] || "Ocurrió un problema con el envío.") + " Puedes reintentar sin duplicar nada." };
+  }catch(err){
+    console.error(err);
+    return { estado: "error", reintentable: true, msg: "Las matrículas se guardaron, pero el correo NO se envió (no hubo respuesta del servicio de correo). Puedes reintentar sin duplicar nada." };
+  }
+}
+
+async function finalizarMatricula(){
+  if (finalizando) return;                                   // doble clic
+  const btn = document.getElementById("btnFinalizar");
+  finalizando = true; btn.disabled = true; btn.textContent = "Guardando…";
+  try{
+    // Todas las matrículas o ninguna; con el mismo id de solicitud un reintento devuelve lo ya guardado
+    const guardado = await rpc("guardar_solicitud", { p_clave: tokenInterno, p_solicitud: solicitudActual.id, p_fichas: fichasActuales });
+    solicitudActual.guardada = true;
+    solicitudGuardada = { id: solicitudActual.id, fichas: fichasActuales.slice() };
 
     // Si venía de una pre-matrícula, eliminarla (el código ya se usó)
     if (codigoPreCargado){
@@ -709,56 +1097,52 @@ async function finalizarMatricula(){
       codigoPreCargado = null;
     }
 
-    // Correo al apoderado
-    let msgMail = "El apoderado no registró correo, por lo que no se envió comprobante por email.";
-    const correo = fichaActual.apoderado.correo;
-    if (correo){
-      if (correoListo){
-        const E = fichaActual.estudiante;
-        let comprobantePdf = null;
-        try{ comprobantePdf = generarComprobantePDFBase64(fichaActual); }
-        catch(err){ console.error("Comprobante PDF:", err); }
-        try{
-          // El script de Google comprueba la sesión (token) y arma el texto del correo por su cuenta:
-          // aquí solo se envían datos, nunca texto libre ni secretos.
-          const resp = await fetch(APPS_SCRIPT_URL, {
-            method: "POST",
-            body: JSON.stringify({
-              token: tokenInterno,
-              to: correo,
-              folio: fichaActual.folio,
-              fechaRegistro: fichaActual.fechaRegistro,
-              tipo: fichaActual.tipo,
-              nombreApoderado: fichaActual.apoderado.nombre,
-              nombreEstudiante: E.nombre,
-              rutEstudiante: E.rut,
-              cursoOProcedencia: fichaActual.tipo === "nuevo" ? (E.procedencia || "") : (E.cursoMatricula || ""),
-              pdfBase64: comprobantePdf,
-              pdfName: `Certificado_matricula_ficha_${fichaActual.folio}.pdf`
-            })
-          });
-          const data = await resp.json();
-          if (!data.ok) throw new Error(data.error || "El script de Google respondió con un error desconocido.");
-          msgMail = "Se envió el certificado de matrícula (con PDF adjunto) al correo " + correo + ".";
-        }catch(err){
-          console.error(err);
-          msgMail = "Los datos se guardaron, pero el correo no pudo enviarse (revisa la configuración del script de Google).";
-        }
-      } else {
-        msgMail = "Los datos se guardaron. El envío automático de correos no está configurado todavía.";
-      }
-    }
-
-    document.getElementById("folioTxt").textContent = "Ficha " + fichaActual.folio;
-    document.getElementById("doneMail").textContent = msgMail;
-    document.getElementById("doneSpam").style.display = msgMail.startsWith("Se envió") ? "" : "none";
-    cerrar("ovFirma");
-    mostrar("scr-done");
+    const resultado = await enviarCorreoSolicitud(solicitudGuardada.id, solicitudGuardada.fichas, tokenInterno);
+    mostrarFinal(resultado, guardado);
   }catch(err){
     aviso("No se pudo guardar", err.message);
   }finally{
-    btn.disabled=false; btn.textContent="Finalizar ✓";
+    finalizando = false; btn.disabled=false; btn.textContent="Finalizar ✓";
   }
+}
+
+function listaFolios(fichas){
+  const f = fichas.map(x => x.folio);
+  return f.length === 1 ? f[0] : f.slice(0, -1).join(", ") + " y " + f[f.length - 1];
+}
+function mostrarFinal(resultado, guardado){
+  const fichas = solicitudGuardada.fichas;
+  document.getElementById("folioTxt").textContent = (fichas.length > 1 ? "Fichas " : "Ficha ") + listaFolios(fichas);
+  document.getElementById("doneLista").replaceChildren(...(fichas.length > 1 ? fichas.map((f, i) =>
+    el("div", { class: "resumen-card" },
+      el("h3", {}, el("span", { texto: `Estudiante ${i + 1}` }), document.createTextNode(f.estudiante.nombre)),
+      filaResumen("Ficha", f.folio), filaResumen("Curso 2027", f.estudiante.cursoMatricula || "No indicado"),
+      filaResumen("Condición", f.tipo === "antiguo" ? "Estudiante antiguo" : "Estudiante nuevo"),
+      el("div", { class: "resumen-fila" }, el("b", { texto: "Matrícula:" }), el("span", { class: "estado ok", texto: "Guardada" }),
+        el("b", { texto: "Certificado:" }), el("span", { class: "estado " + (resultado.estado === "enviado" ? "ok" : "pend"), texto: resultado.estado === "enviado" ? "Enviado" : "Pendiente" })))) : []));
+  document.getElementById("doneMail").textContent = resultado.msg;
+  document.getElementById("doneSpam").style.display = resultado.estado === "enviado" ? "" : "none";
+  document.getElementById("btnReintentarCorreo").style.display = resultado.reintentable ? "" : "none";
+  const adv = (guardado && guardado.advertencias) || [];
+  document.getElementById("doneAdvertencia").textContent = adv.length
+    ? "Aviso: " + adv.map(a => `el RUT de ${etiquetaFinal(fichas, a.orden)} ya figura en la ficha ${a.folio_existente} (otra solicitud)`).join("; ") + ". Revisa que no sea un duplicado."
+    : "";
+  cerrar("ovFirma");
+  mostrar("scr-done");
+}
+function etiquetaFinal(fichas, orden){ const f = fichas[orden - 1]; return f ? f.estudiante.nombre : "un estudiante"; }
+
+// Reintenta el correo de la solicitud recién guardada (no vuelve a guardar nada)
+async function reintentarCorreo(){
+  if (!solicitudGuardada) return;
+  const btn = document.getElementById("btnReintentarCorreo");
+  btn.disabled = true; btn.textContent = "Enviando…";
+  try{
+    const resultado = await enviarCorreoSolicitud(solicitudGuardada.id, solicitudGuardada.fichas, tokenInterno);
+    document.getElementById("doneMail").textContent = resultado.msg;
+    document.getElementById("doneSpam").style.display = resultado.estado === "enviado" ? "" : "none";
+    btn.style.display = resultado.reintentable ? "" : "none";
+  } finally { btn.disabled = false; btn.textContent = "✉️ Reintentar el envío del correo"; }
 }
 
 /* ---------- Panel admin ---------- */
@@ -799,7 +1183,8 @@ async function cargarAdmin(){
       tipo: val.tipo ?? "nuevo",
       estudiante: val.estudiante ?? {},
       apoderado: val.apoderado ?? {},
-      suplente: val.suplente ?? null
+      suplente: val.suplente ?? null,
+      _solicitud: val._solicitud ?? null, _orden: val._orden ?? null, _hermanos: val._hermanos ?? 1, _correo: val._correo ?? null
     }));
     // Orden ascendente 1, 2, 3... por folio (numérico si es posible, si no por fecha de registro)
     registros.sort((a,b)=>{
@@ -857,7 +1242,7 @@ function aplicarFiltrosAdmin(){
       if (hasta && fecha > new Date(hasta+"T23:59:59")) return false;
     }
     if (q){
-      const texto = [r.folio, r.estudiante.nombre, r.estudiante.rut, r.apoderado.nombre, r.apoderado.rut].join(" ").toLowerCase();
+      const texto = [r.folio, r.estudiante.nombre, r.estudiante.rut, r.apoderado.nombre, r.apoderado.rut, r._solicitud ? r._solicitud.slice(0, 8) : ""].join(" ").toLowerCase();
       if (!texto.includes(q)) return false;
     }
     return true;
@@ -881,7 +1266,7 @@ function renderTablaAdmin(lista){
 }
 
 function filaMensaje(texto){
-  return el("tr", {}, el("td", { colspan: "9", texto }));
+  return el("tr", {}, el("td", { colspan: "10", texto }));
 }
 
 // Una fila del panel. Todo dato de la matrícula se inserta como texto (textContent), nunca como HTML.
@@ -901,7 +1286,40 @@ function filaMatricula(r){
     el("td", { texto: nombre }), el("td", { texto: r.estudiante.rut ?? "—" }),
     el("td", { texto: tipo === "antiguo" ? (r.estudiante.cursoMatricula ?? r.estudiante.cursoAnterior ?? "—") : (r.estudiante.procedencia ?? "—") }),
     el("td", { texto: r.apoderado.nombre ?? "—" }), el("td", { texto: r.apoderado.celular ?? "—" }),
+    celdaSolicitud(r),
     el("td", {}, acciones));
+}
+
+// Solicitud a la que pertenece la matrícula (hermanos que se inscribieron juntos) y estado del correo
+const ESTADOS_CORREO = {
+  enviado: ["ok", "Enviado", "Certificado generado y correo enviado"],
+  pendiente: ["pend", "Pendiente", "Certificado pendiente: el correo aún no se envía"],
+  enviando: ["pend", "Enviando", "Envío en curso"],
+  error: ["err", "Error", "El correo no se pudo enviar: se puede reenviar"],
+  sin_correo: ["neutro", "Sin correo", "El apoderado no registró correo"]
+};
+function celdaSolicitud(r){
+  if (!r._solicitud) return el("td", { texto: "—" });
+  const est = ESTADOS_CORREO[r._correo];
+  const td = el("td", { class: "celda-sol" },
+    el("span", { class: "sol-chip", title: "Solicitud " + r._solicitud, texto: `${r._solicitud.slice(0, 6).toUpperCase()} · ${r._orden}/${r._hermanos}` }));
+  if (est){
+    td.append(el("br"), el("span", { class: "estado " + est[0], title: est[2], texto: est[1] }));
+    if (r._correo === "pendiente" || r._correo === "error"){
+      td.append(el("button", { class: "btn-mail", type: "button", title: "Reenviar el correo con los certificados de la solicitud", texto: "✉️", datos: { click: "reenviarCorreo", args: JSON.stringify([r._solicitud]) } }));
+    }
+  }
+  return td;
+}
+// Reenvía el correo único de una solicitud (con los certificados de todos sus estudiantes vigentes). No duplica: el servidor lo impide.
+async function reenviarCorreo(solicitudId){
+  const hermanos = registros.filter(r => r._solicitud === solicitudId).sort((a, b) => (a._orden ?? 0) - (b._orden ?? 0));
+  if (!hermanos.length) return;
+  const fichas = hermanos.map(r => ({ folio: String(r.folio), fechaRegistro: r.fechaRegistro, tipo: r.tipo, estudiante: r.estudiante, apoderado: r.apoderado, suplente: r.suplente }));
+  aviso("Reenviando correo", "Generando los certificados y enviando…");
+  const resultado = await enviarCorreoSolicitud(solicitudId, fichas, tokenAdmin);
+  aviso("Reenvío de correo", resultado.msg);
+  cargarAdmin();
 }
 
 function confirmarEliminar(key, nombre){
@@ -949,7 +1367,9 @@ function descargarExcel(){
     "Edad suplente": r.suplente ? r.suplente.edad : "", "Dirección suplente": r.suplente ? r.suplente.direccion : "",
     "Comuna suplente": r.suplente ? r.suplente.comuna : "", "Nacionalidad suplente": r.suplente ? r.suplente.nacionalidad : "",
     "Celular suplente": r.suplente ? r.suplente.celular : "", "Correo suplente": r.suplente ? r.suplente.correo : "",
-    "Parentesco suplente": r.suplente ? r.suplente.parentesco : "", "Suplente vive con el estudiante": r.suplente ? r.suplente.viveConEstudiante : ""
+    "Parentesco suplente": r.suplente ? r.suplente.parentesco : "", "Suplente vive con el estudiante": r.suplente ? r.suplente.viveConEstudiante : "",
+    "Solicitud": r._solicitud ? r._solicitud.slice(0, 8).toUpperCase() : "", "N° en la solicitud": r._orden ?? "", "Estudiantes en la solicitud": r._solicitud ? r._hermanos : "",
+    "Estado del correo": r._correo ? (ESTADOS_CORREO[r._correo] || [])[1] || r._correo : ""
   }));
   const ws = XLSX.utils.json_to_sheet(filas);
   const wb = XLSX.utils.book_new();
@@ -1120,6 +1540,9 @@ const ACCIONES = {
   copiarLinkApoderado, descargarExcel, descargarExcelLibro, eliminarMatricula, finalizarMatricula, guardarContadorFolio,
   guardarFolioFicha, imprimirMemos, iniciarFicha, limpiarFiltrosAdmin, mostrar, mostrarQR, nuevaMatricula, pedirClaveAdmin,
   toggleSub, validarClave, volverInicio,
+  // varios estudiantes y correo
+  anadirEstudiante, cambiarTipo, pedirQuitarEstudiante, confirmarQuitarEstudiante, confirmarResumen, editarEstudianteResumen,
+  reintentarCorreo, reenviarCorreo,
   // botones de las filas del panel
   imprimirFichaMatricula, abrirFolioFicha, editarMatricula, confirmarEliminar
 };

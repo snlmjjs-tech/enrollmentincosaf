@@ -41,7 +41,9 @@ function servidorEstatico() {
 
 (async () => {
   // Base limpia con el esquema nuevo y claves ficticias
-  execFileSync('psql', ['-h', '127.0.0.1', '-p', String(PUERTO_PG), '-U', 'postgres', '-q', '-v', 'ON_ERROR_STOP=1', '-f', path.join(RAIZ, 'supabase/schema.sql')], { stdio: 'ignore' });
+  for (const sql of ['supabase/schema.sql', 'supabase/migraciones/002_matricula_multiple.sql']) {   // la página nueva necesita las dos
+    execFileSync('psql', ['-h', '127.0.0.1', '-p', String(PUERTO_PG), '-U', 'postgres', '-q', '-v', 'ON_ERROR_STOP=1', '-f', path.join(RAIZ, sql)], { stdio: 'ignore' });
+  }
   await db.admin(`update public.config set modo_transicion = false`);
   await db.admin(`delete from public.intentos; delete from public.sesiones; delete from public.auditoria`);
   const antes = (await db.admin('select count(*)::int n from public.matriculas')).rows[0].n;
@@ -157,7 +159,10 @@ function servidorEstatico() {
     ok('el correo se envió al script de Google', estado.correos.length === 1);
     const c = estado.correos[0] || {};
     ok('el envío NO lleva ningún secreto fijo ni texto libre; lleva el token de sesión', !('secreto' in c) && !('body' in c) && !('subject' in c) && /^[0-9a-f]{64}$/.test(c.token || ''));
-    ok('el PDF del certificado se generó con jsPDF 4.x (empieza con %PDF)', typeof c.pdfBase64 === 'string' && c.pdfBase64.startsWith('JVBER') && c.pdfBase64.length > 2000, 'longitud ' + (c.pdfBase64 || '').length);
+    ok('el envío lleva el id de la solicitud y los certificados; el destinatario y los textos los pone el servidor', /^[0-9a-f-]{36}$/.test(c.solicitudId || '') && Array.isArray(c.certificados) && c.certificados.length === 1 && !('to' in c) && !('nombreApoderado' in c));
+    const pdf0 = ((c.certificados || [])[0] || {}).pdfBase64;
+    ok('el PDF del certificado se generó con jsPDF 4.x (empieza con %PDF)', typeof pdf0 === 'string' && pdf0.startsWith('JVBER') && pdf0.length > 2000, 'longitud ' + (pdf0 || '').length);
+    ok('el PDF va comprimido: pesa mucho menos que el límite (≈120 000 de 250 000 caracteres)', typeof pdf0 === 'string' && pdf0.length < 160000, 'longitud ' + (pdf0 || '').length);
     ok('no hubo errores de JavaScript', pg.errores.length === 0, pg.errores.join(' | '));
     const csp1 = await pg.evaluate(() => window.__csp || []);
     ok('no hubo violaciones de la CSP en todo el flujo (nada legítimo quedó bloqueado)', csp1.length === 0, JSON.stringify(csp1));
@@ -225,6 +230,9 @@ function servidorEstatico() {
     await pg.evaluate(() => cerrar('ovAviso'));
     ok('el nombre con HTML queda como texto dentro del campo del formulario', (await pg.inputValue('#e_nombre')).includes('<img'));
     await pg.click('#ficha button[type=submit]'); await pg.waitForTimeout(1000);
+    ok('1.ª capa: el formulario rechaza los símbolos < y > ANTES de generar documentos y lo explica', (await pantalla(pg)) === 'scr-form' && /los símbolos < y > no están permitidos/.test(await pg.textContent('#bannerDetalle')));
+    // 2.ª capa: aunque datos hostiles llegaran a la pantalla de documentos (saltándose el formulario), se muestran como texto
+    await pg.evaluate(() => { const sol = recolectarSolicitud(); fichasActuales = fichasDeSolicitud(sol).map(f => ({ folio: '1', fechaRegistro: 'x', ...f })); fichaActual = fichasActuales[0]; renderMemos(); });
     const memos = await pg.evaluate(() => ({ pantalla: document.getElementById('memosPantalla').textContent, imprimir: document.getElementById('printArea').textContent, imgs: document.querySelectorAll('#memosPantalla img[src="x"], #printArea img[src="x"]').length }));
     ok('en los documentos y la ficha el HTML se ve como texto literal', memos.pantalla.includes('<img src=x onerror=') && memos.imprimir.includes('<img src=x onerror='));
     ok('no se creó ningún elemento <img> a partir de los datos', memos.imgs === 0);
@@ -278,9 +286,12 @@ function servidorEstatico() {
     pg = await nuevaPagina(base + '/index.html?apoderado');
     await pg.click('.card-btn:nth-child(1)'); await pg.fill('#e_rut', '2179'); await pg.press('#e_rut', 'Tab');
     await pg.fill('#e_nombre', 'Ana <b>Pérez</b>'); await pg.click('#ficha button[type=submit]'); await pg.waitForTimeout(900);
-    const aviso = await pg.textContent('#avisoTexto');
-    ok('un campo con < o > se rechaza con un mensaje claro (y no se guarda)', /caracteres no permitidos/.test(aviso) && (await pantalla(pg)) !== 'scr-codigo', aviso);
-    ok('el mensaje no muestra detalles internos de la base', !/function|public\.|constraint|ERROR/i.test(aviso));
+    const detalle = await pg.textContent('#bannerDetalle');
+    ok('1.ª capa: un campo con < o > se rechaza en el formulario con un mensaje claro (y no se guarda)', /Estudiante 1.*los símbolos < y > no están permitidos/.test(detalle) && (await pantalla(pg)) !== 'scr-codigo' && (await db.admin('select count(*)::int n from public.prematriculas')).rows[0].n === antesPre, detalle);
+    // 2.ª capa: el servidor también lo rechaza si alguien se salta el formulario
+    const errServidor = await pg.evaluate(async () => { try { await rpc('crear_prematricula', { p_datos: { ...recolectarDatos(), _hp: '' } }); return 'aceptado'; } catch (e) { return e.message; } });
+    ok('2.ª capa: el servidor rechaza el campo con < o > (aunque se salte el formulario) con un mensaje claro', /caracteres no permitidos/.test(errServidor), errServidor);
+    ok('el mensaje no muestra detalles internos de la base', !/function|public\.|constraint|ERROR/i.test(errServidor + detalle));
     await pg.context().close();
 
     seccion('7) El funcionario carga la pre-matrícula del apoderado con el código nuevo');

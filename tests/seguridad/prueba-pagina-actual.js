@@ -16,7 +16,10 @@ let pasadas = 0, falladas = 0;
 const ok = (n, c, d) => { if (c) { pasadas++; console.log(`  ✔ ${n}`); } else { falladas++; console.log(`  ✘ ${n}${d ? '  → ' + d : ''}`); } };
 
 (async () => {
-  execFileSync('psql', ['-h', '127.0.0.1', '-p', String(PUERTO_PG), '-U', 'postgres', '-q', '-v', 'ON_ERROR_STOP=1', '-f', path.join(RAIZ, 'supabase/schema.sql')], { stdio: 'ignore' });
+  // La base ya tiene el esquema nuevo Y la migración de matrícula múltiple; la página publicada hoy debe seguir funcionando
+  for (const sql of ['supabase/schema.sql', 'supabase/migraciones/002_matricula_multiple.sql']) {
+    execFileSync('psql', ['-h', '127.0.0.1', '-p', String(PUERTO_PG), '-U', 'postgres', '-q', '-v', 'ON_ERROR_STOP=1', '-f', path.join(RAIZ, sql)], { stdio: 'ignore' });
+  }
   const modo = (await db.admin('select modo_transicion from public.config where id')).rows[0].modo_transicion;
   ok('el esquema nuevo está en modo de transición (como queda al actualizar producción)', modo === true);
   const tipos = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript', '.css': 'text/css', '.png': 'image/png' };

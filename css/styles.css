@@ -206,6 +206,38 @@ table.lista tbody tr:hover td{background:var(--azul-claro)}
 
 /* ---------- Impresión ---------- */
 #printArea{display:none}
+/* ---------- Varios estudiantes en una misma solicitud ---------- */
+.est-extra{border-color:rgba(20,53,94,.4)}
+.est-cab{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.est-cab .est-nombre-vista{font-size:.82rem;color:var(--gris);overflow-wrap:anywhere}
+.est-quitar{background:none;border:1px solid var(--error);color:var(--error);border-radius:9999px;padding:6px 14px;font-size:.8rem;font-weight:600;cursor:pointer;font-family:inherit}
+.est-quitar:hover{background:#fff5f4}
+.tipo-sel{margin-bottom:14px}
+.radio-row.bad .radio-pill span{border-color:var(--error);background:#fff5f4}
+.est-add{margin:4px 0 22px;text-align:center}
+.est-add .btn{width:100%;max-width:440px;border-style:dashed}
+.est-add .btn[disabled]{opacity:.5;cursor:not-allowed}
+.est-add .hint{margin-top:8px}
+#bannerDetalle{margin:8px 0 0 18px;padding:0;font-weight:500}
+#bannerDetalle:empty{display:none}
+.resumen-card{border:1px solid var(--linea);border-radius:22px;background:var(--superficie);padding:18px 20px;margin-bottom:12px;box-shadow:var(--sombra-s)}
+.resumen-card h3{font-family:var(--display);color:var(--azul);font-size:1.02rem;margin-bottom:8px;overflow-wrap:anywhere}
+.resumen-card h3 span{color:var(--dorado);font-weight:500;margin-right:6px}
+.resumen-fila{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:.86rem;margin:4px 0;overflow-wrap:anywhere}
+.resumen-fila b{color:var(--azul)}
+.resumen-acciones{margin-top:10px}
+.estado{display:inline-block;padding:2px 9px;border-radius:20px;font-size:.7rem;font-weight:700;white-space:nowrap}
+.estado.ok{background:#e8f6ee;color:#1d7a46}
+.estado.pend{background:var(--dorado-suave);color:#8a6410}
+.estado.err{background:#fff5f4;color:var(--error)}
+.estado.neutro{background:var(--azul-claro);color:var(--azul)}
+.done-lista{margin:14px auto;max-width:520px;text-align:left}
+.done-lista .resumen-card{padding:12px 16px;margin-bottom:8px}
+.btn-mail{background:none;border:1px solid var(--linea);border-radius:8px;padding:2px 6px;cursor:pointer;font-size:.75rem;margin-left:4px}
+.btn-mail:hover{border-color:var(--azul);background:var(--azul-claro)}
+.celda-sol{line-height:1.9;white-space:nowrap}
+.sol-chip{display:inline-block;font-size:.72rem;color:var(--azul);background:var(--azul-claro);border-radius:20px;padding:2px 8px;white-space:nowrap}
+
 @media print{
   /* al imprimir solo queda el área de impresión (lo demás se oculta de verdad, sin ocupar hojas) */
   body > *:not(#printArea){display:none!important}

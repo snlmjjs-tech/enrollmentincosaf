@@ -38,10 +38,15 @@ ser copiadas). Lo que protege es **cambiar las credenciales**. Reescribir el his
 4. Recomendación: 12 caracteres o más, sin relación con el nombre del colegio ni con el año; distintas entre sí.
 
 ### B. Script de Google (correo)
+0. **Secreto propio del script** (nuevo, para la matrícula múltiple): inventa un texto largo y aleatorio (≥ 20 caracteres; por ejemplo
+   `node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"`), guárdalo en tu gestor de contraseñas y regístralo **como hash** en Supabase
+   (migración `002` ya aplicada): `update public.config set clave_script_hash = extensions.crypt('EL_SECRETO', extensions.gen_salt('bf')) where id;`
+   El mismo texto va en la propiedad `SECRETO_SCRIPT` del script. Solo lo conocen la base (hash) y el script; **nunca** va en la página, el chat ni GitHub.
 1. Abre `script.google.com` → el proyecto actual del correo. **Copia el código actual a un archivo aparte** (respaldo).
 2. Reemplaza el código por el de `apps-script/Code.gs`.
-3. Engranaje → **Propiedades del script** → agrega `SUPABASE_URL`, `SUPABASE_KEY` (la clave **pública** `sb_publishable_…`),
-   `NOMBRE_COLEGIO`, `CORREO_CONTACTO`, `TELEFONO_CONTACTO`, `DIRECCION_COLEGIO` y (opcional) `LIMITE_DIARIO`.
+3. Engranaje → **Propiedades del script** → agrega `ENTORNO` = `produccion`, `SUPABASE_URL`, `SUPABASE_KEY` (la clave **pública** `sb_publishable_…`), `SECRETO_SCRIPT` (paso 0),
+   `NOMBRE_COLEGIO`, `CORREO_CONTACTO`, `TELEFONO_CONTACTO`, `DIRECCION_COLEGIO` y (opcional) `LIMITE_DIARIO`. Para **pruebas** usa un proyecto de Apps Script distinto con `ENTORNO` = `prueba`
+   y `DESTINATARIOS_PRUEBA` (ver `docs/multiple/PRUEBA_CORREO_REAL.md`).
    Si existía una propiedad con el secreto antiguo, **bórrala**.
 4. **Implementar → Administrar implementaciones →** lápiz → *Versión: Nueva versión* → Implementar. Así la dirección `/exec` no cambia.
    Ejecutar como: *Yo*; acceso: *Cualquier persona*.

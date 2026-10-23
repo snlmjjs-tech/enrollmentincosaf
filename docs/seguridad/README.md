@@ -45,3 +45,7 @@ Cada archivo explica en su cabecera cómo usarlo. Las pruebas **no** sustituyen 
 La CSP de `index.html` (`connect-src`) permite hablar solo con el proyecto de Supabase actual y con Google Apps Script. Si algún día
 cambia la dirección del proyecto de Supabase o se agrega otro servicio, hay que actualizar esa lista; de lo contrario el navegador bloqueará la conexión
 (se vería como «Ocurrió un problema al comunicarse con el servidor»).
+
+## Matrícula de varios estudiantes y entorno de pruebas
+La matrícula múltiple, el envío de un solo correo con varios certificados, los límites de tamaño y la guía para validar en un proyecto de Supabase de pruebas están en
+[`docs/multiple/`](../multiple/README.md). Se conservaron todas las medidas de esta carpeta.

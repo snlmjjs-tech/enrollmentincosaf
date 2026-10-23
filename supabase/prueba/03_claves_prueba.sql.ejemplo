@@ -1,0 +1,23 @@
+-- =====================================================================================================
+-- 03 · CLAVES DE PRUEBA  (PLANTILLA: cópiala, cámbiala y pégala en el SQL Editor; NO la guardes con claves reales)
+-- =====================================================================================================
+-- Dónde: SQL Editor de tu proyecto de PRUEBAS.  Cuándo: después de 01 (esquema) y 02 (migración).
+-- Qué hace: guarda las 3 claves de prueba como HASH (nunca el texto). Son distintas de las de producción.
+--
+-- Cómo usarla (sin pegar claves en el chat, GitHub ni correos):
+--   1. Inventa 3 textos DISTINTOS, largos y aleatorios (mínimo 20 caracteres). Por ejemplo con un gestor de contraseñas.
+--      · CLAVE_ENCARGADOS_PRUEBA  → abre el panel de matrículas (la de funcionarios no sirve ahí).
+--      · CLAVE_FUNCIONARIOS_PRUEBA → es la que se escribe al abrir la página para matricular.
+--      · SECRETO_SCRIPT_PRUEBA     → solo la conocen Supabase (en hash) y el Apps Script de PRUEBAS (propiedad SECRETO_SCRIPT).
+--   2. Copia este texto a una ventana NUEVA del SQL Editor y reemplaza SOLO lo que está entre << >>.
+--   3. Ejecuta (Run). Debe decir «Success». Cierra la ventana SIN guardar la consulta (para que la clave no quede escrita).
+--   4. Guarda las 3 claves en tu gestor de contraseñas. Nadie más las necesita.
+-- =====================================================================================================
+insert into public.config (id, clave_hash)
+values (true, extensions.crypt('<<CLAVE_ENCARGADOS_PRUEBA>>', extensions.gen_salt('bf')))
+on conflict (id) do update set clave_hash = excluded.clave_hash;
+
+update public.config
+   set clave_interna_hash = extensions.crypt('<<CLAVE_FUNCIONARIOS_PRUEBA>>', extensions.gen_salt('bf')),
+       clave_script_hash  = extensions.crypt('<<SECRETO_SCRIPT_PRUEBA>>', extensions.gen_salt('bf'))
+ where id;
