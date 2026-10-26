@@ -107,6 +107,14 @@ input[type=text],input[type=email],input[type=tel],input[type=date],input[type=n
   transition:border-color .2s,box-shadow .25s,background .2s}
 input:hover,select:hover,textarea:hover{border-color:rgba(0,0,0,.28)}
 input:focus,select:focus,textarea:focus{outline:none;background:#fff;border-color:var(--azul);box-shadow:0 0 0 4px rgba(20,53,94,.16)}
+.clave-wrap{position:relative}
+.clave-wrap input{padding-right:50px}
+.ojo-clave{position:absolute;top:50%;right:6px;transform:translateY(-50%);width:40px;height:40px;display:flex;align-items:center;justify-content:center;border:0;border-radius:12px;background:transparent;color:var(--gris);cursor:pointer;transition:background .2s,color .2s}
+.ojo-clave:hover{background:rgba(20,53,94,.08);color:var(--azul)}
+.ojo-clave:focus-visible{outline:2px solid var(--azul);outline-offset:1px}
+.ojo-clave .ojo-cerrado{display:none}
+.ojo-clave[aria-pressed=true] .ojo-abierto{display:none}
+.ojo-clave[aria-pressed=true] .ojo-cerrado{display:block}
 input.bad,select.bad{border-color:var(--error);background:#fff5f4}
 .hint{font-size:.72rem;color:var(--gris);margin-top:4px}
 .hint.err{color:var(--error);font-weight:600}
