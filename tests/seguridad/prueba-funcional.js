@@ -91,7 +91,8 @@ const textoPdf = buf => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'incos
     ok('con todo completo y un RUT válido, genera los documentos (sin pantalla de resumen: es un solo estudiante)', (await pant(pg)) === 'scr-memos', await pant(pg));
     const txtPrint = await pg.evaluate(() => document.getElementById('printArea').innerText + document.getElementById('memosPantalla').innerText);
     ok('los documentos contienen los datos TEST ingresados (estudiante, apoderado y suplente)', /Estudiante TEST Uno/.test(txtPrint) && /Apoderado TEST/.test(txtPrint) && /Suplente TEST/.test(txtPrint));
-    ok('hay 4 hojas de impresión (3 autorizaciones + ficha)', (await pg.evaluate(() => document.querySelectorAll('#printArea .print-memo').length)) === 4);
+    ok('hay 5 hojas de impresión (3 autorizaciones + compromiso del apoderado + ficha)', (await pg.evaluate(() => document.querySelectorAll('#printArea .print-memo').length)) === 5);
+    ok('el compromiso del apoderado está en pantalla e impreso, con reuniones, uniforme, horario y reglamento', await pg.evaluate(() => { const t = document.getElementById('memosPantalla').innerText + ' ' + document.getElementById('printArea').innerText; return ['Compromiso del apoderado', 'reuniones de apoderados', 'uniforme', 'horario de ingreso', 'Reglamento Interno'].every(x => t.toLowerCase().includes(x.toLowerCase())); }));
     await finalizar(pg);
     ok('finaliza: pantalla de comprobante con «Ficha N»', (await pant(pg)) === 'scr-done' && /Ficha \d+/.test(await pg.textContent('#folioTxt')));
     const folioVisto = (await pg.textContent('#folioTxt')).replace(/\D/g, '');

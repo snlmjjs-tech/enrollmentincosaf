@@ -246,6 +246,8 @@ table.lista tbody tr:hover td{background:var(--azul-claro)}
 .celda-sol{line-height:1.9;white-space:nowrap}
 .sol-chip{display:inline-block;font-size:.72rem;color:var(--azul);background:var(--azul-claro);border-radius:20px;padding:2px 8px;white-space:nowrap}
 
+ol.compromisos{margin:12px 0 14px 22px;padding:0}
+ol.compromisos li{margin-bottom:8px}
 @media print{
   /* al imprimir solo queda el área de impresión (lo demás se oculta de verdad, sin ocupar hojas) */
   body > *:not(#printArea){display:none!important}

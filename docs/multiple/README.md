@@ -41,7 +41,7 @@ Navegador (sitio estático en GitHub Pages: index.html + js/app.js + css + vendo
 5. Con 2 o más estudiantes, al pulsar «Revisar la solicitud» se muestra un **resumen** (cada estudiante con nombre, curso, condición, validación y
    documentos requeridos; el apoderado una sola vez). Se puede **volver a editar** sin perder nada. Con un solo estudiante el flujo es el de siempre.
 6. Si hay errores, el aviso dice **qué estudiante y qué campos** corregir; los datos de los demás no se borran.
-7. «Confirmar y generar documentos» reserva los folios y genera, por cada estudiante, 3 autorizaciones + la ficha de antecedentes (4 hojas por alumno).
+7. «Confirmar y generar documentos» reserva los folios y genera, por cada estudiante, 3 autorizaciones + el compromiso del apoderado + la ficha de antecedentes (5 hojas por alumno). El compromiso también va como página 2 del certificado PDF del correo.
 8. «Finalizar» guarda **todas las matrículas o ninguna** y envía **un solo correo** con un certificado PDF por estudiante.
 
 ### Datos compartidos y datos individuales

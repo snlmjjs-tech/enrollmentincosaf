@@ -661,7 +661,7 @@ function mostrarResumen(sol){
       filaResumen("Curso 2027", E.cursoMatricula || "No indicado"),
       x.tipo === "nuevo" ? filaResumen("Colegio de procedencia", E.procedencia) : "",
       filaResumen("Parentesco con este estudiante", F.apoderado.parentesco),
-      filaResumen("Documentos requeridos", `3 autorizaciones, ficha de antecedentes y certificado PDF (se generan al continuar). ${pie}.`),
+      filaResumen("Documentos requeridos", `3 autorizaciones, compromiso del apoderado, ficha de antecedentes y certificado PDF (se generan al continuar). ${pie}.`),
       el("div", { class: "resumen-fila" }, el("b", { texto: "Validación:" }), el("span", { class: "estado ok", texto: "✔ Campos obligatorios completos" })),
       el("div", { class: "resumen-acciones" }, el("button", { type: "button", class: "btn btn-ghost", texto: "✏️ Editar este estudiante", datos: { click: "editarEstudianteResumen", args: JSON.stringify([ns[i]]) } })));
   }));
@@ -821,6 +821,19 @@ function copiarLinkApoderado(){
   }
 }
 
+// Compromisos del apoderado: un solo texto para la pantalla, la hoja impresa y el PDF que va por correo
+const COMPROMISOS_APODERADO = [
+  { t:"Reuniones de apoderados.", d:"Asistir a las reuniones de apoderados y a las citaciones que el establecimiento me comunique durante el año escolar 2027." },
+  { t:"Uniforme.", d:"Hacer cumplir el uso del uniforme institucional por parte de mi pupilo(a), con la presentación personal que establece el reglamento." },
+  { t:"Horario de llegada.", d:"Velar por que mi pupilo(a) llegue puntualmente, respetando el horario de ingreso al establecimiento." },
+  { t:"Reglamento Interno.", d:"Respetar y hacer respetar el Reglamento Interno y de Convivencia Escolar del establecimiento, y colaborar con su cumplimiento." }
+];
+function textoIntroCompromiso(f){
+  const A = f.apoderado, E = f.estudiante;
+  return `Yo, ${A.nombre}, RUT ${A.rut}, apoderado(a) titular del(la) estudiante ${E.nombre}, RUT ${E.rut}, matriculado(a) en el ${NOMBRE_COLEGIO} para el año escolar 2027, me comprometo a:`;
+}
+const TEXTO_CIERRE_COMPROMISO = "Declaro haber leído y comprendido este compromiso, y lo firmo de manera voluntaria.";
+
 function textosMemos(f){
   const A = f.apoderado, E = f.estudiante;
   const hoy = new Date().toLocaleDateString("es-CL",{day:"numeric",month:"long",year:"numeric"});
@@ -830,7 +843,9 @@ function textosMemos(f){
     { titulo:"Aceptación del Reglamento Interno",
       cuerpo:h`Yo, <b>${A.nombre}</b>, RUT <b>${A.rut}</b>, apoderado(a) titular del(la) estudiante <b>${E.nombre}</b>, RUT <b>${E.rut}</b>, declaro haber tomado conocimiento del <b>Reglamento Interno y de Convivencia Escolar</b> del <b>${NOMBRE_COLEGIO}</b>, disponible en el establecimiento y en sus medios oficiales, y manifiesto mi plena conformidad y adhesión a sus normas, protocolos, derechos y deberes.<br><br>Me comprometo, junto a mi pupilo(a), a respetar y cumplir sus disposiciones durante el año escolar 2027, colaborando con el establecimiento en la formación integral del(la) estudiante y en la sana convivencia de la comunidad educativa.` },
     { titulo:"Autorización de salidas pedagógicas",
-      cuerpo:h`Yo, <b>${A.nombre}</b>, RUT <b>${A.rut}</b>, apoderado(a) titular del(la) estudiante <b>${E.nombre}</b>, RUT <b>${E.rut}</b>, autorizo a mi pupilo(a) a participar en las <b>salidas pedagógicas</b> organizadas por el <b>${NOMBRE_COLEGIO}</b> durante el año escolar 2027, dentro y fuera de la comuna, siempre que estas cuenten con la supervisión de docentes y/o asistentes de la educación del establecimiento y se realicen en el marco de los objetivos de aprendizaje del plan de estudios.<br><br>Declaro que seré oportunamente informado(a) de cada salida (fecha, lugar y horario) a través de los canales oficiales del establecimiento.` }
+      cuerpo:h`Yo, <b>${A.nombre}</b>, RUT <b>${A.rut}</b>, apoderado(a) titular del(la) estudiante <b>${E.nombre}</b>, RUT <b>${E.rut}</b>, autorizo a mi pupilo(a) a participar en las <b>salidas pedagógicas</b> organizadas por el <b>${NOMBRE_COLEGIO}</b> durante el año escolar 2027, dentro y fuera de la comuna, siempre que estas cuenten con la supervisión de docentes y/o asistentes de la educación del establecimiento y se realicen en el marco de los objetivos de aprendizaje del plan de estudios.<br><br>Declaro que seré oportunamente informado(a) de cada salida (fecha, lugar y horario) a través de los canales oficiales del establecimiento.` },
+    { titulo:"Compromiso del apoderado(a)",
+      cuerpo:h`Yo, <b>${A.nombre}</b>, RUT <b>${A.rut}</b>, apoderado(a) titular del(la) estudiante <b>${E.nombre}</b>, RUT <b>${E.rut}</b>, matriculado(a) en el <b>${NOMBRE_COLEGIO}</b> para el año escolar 2027, me comprometo a:<ol class="compromisos">${COMPROMISOS_APODERADO.map(c => h`<li><b>${c.t}</b> ${c.d}</li>`)}</ol>${TEXTO_CIERRE_COMPROMISO}` }
   ].map(m=>({...m, fecha:`San Fernando, ${hoy}.`,
     firma:h`${A.nombre} — RUT ${A.rut}<br>Firma del apoderado(a) titular`}));
 }
@@ -1014,6 +1029,32 @@ function generarComprobantePDFBase64(f){
   doc.setFontSize(9);
   doc.setTextColor(120);
   doc.text("Este certificado acredita el registro de la matrícula en el sistema del establecimiento.", ancho/2, 275, { align:"center", maxWidth: ancho-30 });
+
+  // Página 2: compromiso del apoderado (mismo texto que la hoja impresa; esta copia llega por correo)
+  doc.addPage();
+  doc.addImage(LOGO_IMG, "PNG", (ancho-20)/2, 16, 20, 27.1);
+  doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(0);
+  doc.text(NOMBRE_COLEGIO, ancho/2, 52, { align: "center", maxWidth: ancho-40 });
+  doc.setFontSize(15);
+  doc.text("COMPROMISO DEL APODERADO(A)", ancho/2, 64, { align: "center" });
+  doc.setFont("helvetica", "normal"); doc.setFontSize(11);
+  let y = 80;
+  const intro = doc.splitTextToSize(textoIntroCompromiso(f), ancho-40);
+  doc.text(intro, 20, y); y += intro.length*6 + 4;
+  COMPROMISOS_APODERADO.forEach((c, i) => {
+    const lin = doc.splitTextToSize(`${i+1}. ${c.t} ${c.d}`, ancho-50);
+    doc.text(lin, 25, y); y += lin.length*6 + 3;
+  });
+  y += 4;
+  const cierre = doc.splitTextToSize(TEXTO_CIERRE_COMPROMISO, ancho-40);
+  doc.text(cierre, 20, y); y += cierre.length*6 + 10;
+  doc.text(`San Fernando, ${hoy}.`, 20, y); y += 30;
+  doc.line(20, y, 100, y);
+  doc.setFontSize(9);
+  doc.text(`${A.nombre} - RUT ${A.rut}`, 20, y+5, { maxWidth: 90 });
+  doc.text("Firma del apoderado(a) titular", 20, y+10);
+  doc.setTextColor(120);
+  doc.text(`Ficha de matrícula ${f.folio}. Copia informativa del documento que se firma en el establecimiento.`, ancho/2, 275, { align:"center", maxWidth: ancho-30 });
 
   return doc.output("datauristring").split(",")[1];
 }
