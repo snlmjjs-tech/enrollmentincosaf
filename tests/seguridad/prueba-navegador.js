@@ -150,7 +150,7 @@ function servidorEstatico() {
     ok('el truco 2179 rellena los datos de prueba', (await pg.inputValue('#e_nombre')) === 'Prueba de Matrículas');
     await pg.click('#ficha button[type=submit]'); await pg.waitForTimeout(900);
     ok('se generan los documentos (pantalla de impresión)', (await pantalla(pg)) === 'scr-memos');
-    ok('se arman 4 hojas de impresión (3 autorizaciones + ficha)', (await pg.evaluate(() => document.querySelectorAll('#printArea .print-memo').length)) === 4);
+    ok('se arman 5 hojas de impresión (3 autorizaciones + compromiso + ficha)', (await pg.evaluate(() => document.querySelectorAll('#printArea .print-memo').length)) === 5);
     await pg.evaluate(() => { window.print = () => {}; }); await pg.click('button:has-text("Imprimir documentos")'); await pg.waitForTimeout(700);
     await pg.click('#btnFinalizar'); await pg.waitForTimeout(1800);
     ok('la matrícula se finaliza y se muestra el comprobante', (await pantalla(pg)) === 'scr-done', await pantalla(pg));
