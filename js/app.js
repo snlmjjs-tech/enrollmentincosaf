@@ -176,7 +176,7 @@ function mostrar(id){
   document.getElementById(id).classList.add("active");
   window.scrollTo({top:0});
 }
-function cerrar(id){ document.getElementById(id).classList.remove("show"); }
+function cerrar(id){ document.getElementById(id).classList.remove("show"); if (id === "ovClave") ponerVistaClave("inputClave", false); }
 function abrir(id){ document.getElementById(id).classList.add("show"); }
 // Muestra un aviso. «x» es TEXTO (o un resultado de h`...` cuando necesita negritas).
 function aviso(t,x){
@@ -1146,7 +1146,16 @@ async function reintentarCorreo(){
 }
 
 /* ---------- Panel admin ---------- */
-function pedirClaveAdmin(){ document.getElementById("inputClave").value=""; abrir("ovClave"); setTimeout(()=>document.getElementById("inputClave").focus(),100); }
+/* Ojo para ver/ocultar la clave mientras se escribe. Vuelve a ocultarla al cerrar el cuadro. */
+function ponerVistaClave(id, visible){
+  const inp = document.getElementById(id); if (!inp) return;
+  inp.type = visible ? "text" : "password";
+  const b = inp.parentElement && inp.parentElement.querySelector(".ojo-clave");
+  if (b){ b.setAttribute("aria-pressed", visible ? "true" : "false");
+    const t = visible ? "Ocultar clave" : "Mostrar clave"; b.setAttribute("aria-label", t); b.title = t; }
+}
+function alternarClave(id){ const inp = document.getElementById(id); if (inp) ponerVistaClave(id, inp.type === "password"); }
+function pedirClaveAdmin(){ ponerVistaClave("inputClave", false); document.getElementById("inputClave").value=""; abrir("ovClave"); setTimeout(()=>document.getElementById("inputClave").focus(),100); }
 document.getElementById("inputClave").addEventListener("keydown",e=>{ if(e.key==="Enter") validarClave(); });
 async function validarClave(){
   const clave = document.getElementById("inputClave").value;
@@ -1488,7 +1497,7 @@ function cerrarAcceso(){
   for (const t of [tokenInterno, tokenAdmin]) if (t) rpc("cerrar_sesion", { p_token: t }).catch(() => {});
   tokenInterno = null; tokenAdmin = null;
   try{ sessionStorage.removeItem("tokenInterno"); }catch(e){}
-  document.getElementById("inputClaveInterna").value = "";
+  document.getElementById("inputClaveInterna").value = ""; ponerVistaClave("inputClaveInterna", false);
   document.getElementById("accesoError").textContent = "";
   mostrar("scr-acceso");
 }
@@ -1514,7 +1523,7 @@ async function entrarConClave(clave){
     return false;
   }finally{
     btn.disabled = false; btn.textContent = "Entrar";
-    document.getElementById("inputClaveInterna").value = "";
+    document.getElementById("inputClaveInterna").value = ""; ponerVistaClave("inputClaveInterna", false);
   }
 }
 document.getElementById("formAcceso").addEventListener("submit", e=>{
@@ -1539,7 +1548,7 @@ const ACCIONES = {
   abrirCargarCodigo, abrirContadorFolio, actualizarLugarTrabajo, aplicarFiltrosAdmin, cargarPrematricula, cerrar, cerrarAcceso,
   copiarLinkApoderado, descargarExcel, descargarExcelLibro, eliminarMatricula, finalizarMatricula, guardarContadorFolio,
   guardarFolioFicha, imprimirMemos, iniciarFicha, limpiarFiltrosAdmin, mostrar, mostrarQR, nuevaMatricula, pedirClaveAdmin,
-  toggleSub, validarClave, volverInicio,
+  toggleSub, validarClave, volverInicio, alternarClave,
   // varios estudiantes y correo
   anadirEstudiante, cambiarTipo, pedirQuitarEstudiante, confirmarQuitarEstudiante, confirmarResumen, editarEstudianteResumen,
   reintentarCorreo, reenviarCorreo,
