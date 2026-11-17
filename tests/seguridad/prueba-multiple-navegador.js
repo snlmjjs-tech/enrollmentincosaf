@@ -85,7 +85,7 @@ async function llenarEst(pg, n, o) {
 async function llenarApoderado(pg, correo = DEST) {
   await pg.fill('#a_nombre', 'Apoderado TEST'); await pg.fill('#a_rut', rut(22222222)); await pg.press('#a_rut', 'Tab'); await pg.fill('#a_edad', '40');
   await pg.fill('#a_dir', 'Calle Ficticia 123 TEST'); await pg.fill('#a_comuna', 'Comuna TEST'); await pg.fill('#a_nacionalidad', 'Chilena'); await pg.fill('#a_cel', '+56 9 0000 0001');
-  await pg.fill('#a_mail', correo); await pg.selectOption('#a_parentesco', { index: 1 });
+  await pg.fill('#a_mail', correo); await pg.selectOption('#a_parentesco', { index: 1 }); await pg.check('#consent_datos');
 }
 const enviar = async pg => { await pg.click('#ficha button[type=submit]'); await pg.waitForTimeout(900); };
 const hojas = pg => pg.evaluate(() => document.querySelectorAll('#printArea .print-memo').length);
@@ -188,10 +188,10 @@ const H = [
     await enviar(pg); await pg.click('#btnConfirmarResumen'); await pg.waitForTimeout(1200);
     ok('al confirmar se generan los documentos', (await pant(pg)) === 'scr-memos');
     ok('se reservaron exactamente 3 folios (una sola llamada)', estado.rpcs.filter(r => r === 'reservar_folios').length === 1);
-    ok('hay 15 hojas de impresión: 5 por estudiante (3 autorizaciones + compromiso + ficha)', (await hojas(pg)) === 15, String(await hojas(pg)));
+    ok('hay 18 hojas de impresión: 6 por estudiante (3 autorizaciones + compromiso + consentimiento de datos + ficha)', (await hojas(pg)) === 18, String(await hojas(pg)));
     const memos = await pg.evaluate(() => document.getElementById('memosPantalla').innerText);
     ok('los documentos de cada estudiante llevan SU nombre y SU ficha', H.every(h => memos.includes(h.nombre)) && (memos.match(/Estudiante \d de 3/g) || []).length === 3);
-    ok('cada hoja de impresión lleva el folio de su estudiante', await pg.evaluate(() => { const hs = [...document.querySelectorAll('#printArea .print-memo')]; const f = hs.map(h => (/Ficha (\d+)/.exec(h.innerText) || [])[1]); return new Set(f).size === 3 && f.slice(0, 5).every(x => x === f[0]) && f.slice(5, 10).every(x => x === f[5]); }));
+    ok('cada hoja de impresión lleva el folio de su estudiante', await pg.evaluate(() => { const hs = [...document.querySelectorAll('#printArea .print-memo')]; const f = hs.map(h => (/Ficha (\d+)/.exec(h.innerText) || [])[1]); return new Set(f).size === 3 && f.slice(0, 6).every(x => x === f[0]) && f.slice(6, 12).every(x => x === f[6]); }));
     await capturar(pg, 'documentos_3_estudiantes');
     await finalizar(pg, 3000);
     ok('la solicitud se guarda y aparece la pantalla de comprobante', (await pant(pg)) === 'scr-done', await pant(pg));

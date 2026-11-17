@@ -145,12 +145,12 @@ function servidorEstatico() {
     pg = await nuevaPagina(base + '/index.html');
     await entrarPersonal(pg);
     await pg.click('.card-btn:nth-child(2)');
-    await pg.fill('#e_rut', '2179'); await pg.press('#e_rut', 'Tab'); await pg.waitForTimeout(300);
+    await pg.fill('#e_rut', '2179'); await pg.press('#e_rut', 'Tab'); await pg.waitForTimeout(300); await pg.check('#consent_datos');
     await pg.fill('#a_mail', 'apoderado@example.com');
     ok('el truco 2179 rellena los datos de prueba', (await pg.inputValue('#e_nombre')) === 'Prueba de Matrículas');
     await pg.click('#ficha button[type=submit]'); await pg.waitForTimeout(900);
     ok('se generan los documentos (pantalla de impresión)', (await pantalla(pg)) === 'scr-memos');
-    ok('se arman 5 hojas de impresión (3 autorizaciones + compromiso + ficha)', (await pg.evaluate(() => document.querySelectorAll('#printArea .print-memo').length)) === 5);
+    ok('se arman 6 hojas de impresión (3 autorizaciones + compromiso + consentimiento de datos + ficha)', (await pg.evaluate(() => document.querySelectorAll('#printArea .print-memo').length)) === 6);
     await pg.evaluate(() => { window.print = () => {}; }); await pg.click('button:has-text("Imprimir documentos")'); await pg.waitForTimeout(700);
     await pg.click('#btnFinalizar'); await pg.waitForTimeout(1800);
     ok('la matrícula se finaliza y se muestra el comprobante', (await pantalla(pg)) === 'scr-done', await pantalla(pg));
@@ -267,7 +267,7 @@ function servidorEstatico() {
     ok('no ve el botón de cargar pre-matrícula ni el panel', await pg.evaluate(() => getComputedStyle(document.querySelector('.pre-row')).display === 'none' && getComputedStyle(document.querySelector('.admin-link')).display === 'none'));
     ok('el campo trampa no se ve ni se puede enfocar', await pg.evaluate(() => { const r = document.querySelector('.trampa').getBoundingClientRect(); return r.right < 0 || r.width <= 1; }));
     await pg.click('.card-btn:nth-child(1)');
-    await pg.fill('#e_rut', '2179'); await pg.press('#e_rut', 'Tab'); await pg.waitForTimeout(300);
+    await pg.fill('#e_rut', '2179'); await pg.press('#e_rut', 'Tab'); await pg.waitForTimeout(300); await pg.check('#consent_datos');
     await pg.click('#ficha button[type=submit]'); await pg.waitForTimeout(1000);
     const codigoPantalla = (await pg.textContent('#codigoGrande')).trim();
     ok('el apoderado recibe un código de 6 caracteres con la forma XXX-XXX', /^[A-HJ-NP-Z2-9]{3}-[A-HJ-NP-Z2-9]{3}$/.test(codigoPantalla), codigoPantalla);

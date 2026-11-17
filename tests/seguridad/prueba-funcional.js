@@ -58,7 +58,7 @@ async function llenar(pg, o) {
   await radio(pg, 'rep', 'no'); await radio(pg, 'pie', o.pie || 'no'); if (o.pie === 'si') { await set('e_pieDiag', 'Diagnóstico TEST'); await radio(pg, 'pieDoc', 'si'); }
   await radio(pg, 'salud', o.salud || 'no'); if (o.salud === 'si') await set('e_saludDet', 'Detalle salud TEST');
   await set('a_nombre', o.apo || 'Apoderado TEST'); await set('a_rut', o.rutA); await pg.press('#a_rut', 'Tab'); await set('a_edad', '40'); await set('a_dir', 'Calle Ficticia 123 TEST'); await set('a_comuna', 'Comuna TEST'); await set('a_nacionalidad', 'Chilena'); await set('a_cel', '+56 9 0000 0001'); await set('a_mail', o.mailA === undefined ? '' : o.mailA);
-  await pg.selectOption('#a_parentesco', { index: 1 }); await pg.selectOption('#a_nivel', { index: 1 }); await pg.selectOption('#a_laboral', { index: 1 });
+  await pg.selectOption('#a_parentesco', { index: 1 }); await pg.check('#consent_datos'); await pg.selectOption('#a_nivel', { index: 1 }); await pg.selectOption('#a_laboral', { index: 1 });
   if (o.sup) { await radio(pg, 'sup', 'si'); await set('s_nombre', 'Suplente TEST'); await set('s_rut', o.rutS); await pg.press('#s_rut', 'Tab'); await set('s_edad', '35'); await set('s_dir', 'Calle Ficticia 9 TEST'); await set('s_comuna', 'Comuna TEST'); await set('s_nacionalidad', 'Chilena'); await set('s_cel', '+56 9 0000 0002'); await pg.selectOption('#s_parentesco', { index: 1 }); }
 }
 const enviar = async pg => { await pg.click('#ficha button[type=submit]'); await pg.waitForTimeout(1000); };
@@ -91,7 +91,8 @@ const textoPdf = buf => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'incos
     ok('con todo completo y un RUT válido, genera los documentos (sin pantalla de resumen: es un solo estudiante)', (await pant(pg)) === 'scr-memos', await pant(pg));
     const txtPrint = await pg.evaluate(() => document.getElementById('printArea').innerText + document.getElementById('memosPantalla').innerText);
     ok('los documentos contienen los datos TEST ingresados (estudiante, apoderado y suplente)', /Estudiante TEST Uno/.test(txtPrint) && /Apoderado TEST/.test(txtPrint) && /Suplente TEST/.test(txtPrint));
-    ok('hay 5 hojas de impresión (3 autorizaciones + compromiso del apoderado + ficha)', (await pg.evaluate(() => document.querySelectorAll('#printArea .print-memo').length)) === 5);
+    ok('hay 6 hojas de impresión (3 autorizaciones + compromiso + consentimiento de datos + ficha)', (await pg.evaluate(() => document.querySelectorAll('#printArea .print-memo').length)) === 6);
+    ok('el consentimiento de datos está impreso con responsable, finalidad, derechos y la firma del apoderado', await pg.evaluate(() => { const t = document.getElementById('printArea').innerText; return ['Consentimiento para el tratamiento de datos personales', 'Responsable y finalidad', 'Veracidad', 'Mis derechos', 'Firma del apoderado(a) titular'].every(x => t.includes(x)); }));
     ok('el compromiso del apoderado está en pantalla e impreso, con reuniones, uniforme, horario y reglamento', await pg.evaluate(() => { const t = document.getElementById('memosPantalla').innerText + ' ' + document.getElementById('printArea').innerText; return ['Compromiso del apoderado', 'reuniones de apoderados', 'uniforme', 'horario de ingreso', 'Reglamento Interno'].every(x => t.toLowerCase().includes(x.toLowerCase())); }));
     await finalizar(pg);
     ok('finaliza: pantalla de comprobante con «Ficha N»', (await pant(pg)) === 'scr-done' && /Ficha \d+/.test(await pg.textContent('#folioTxt')));

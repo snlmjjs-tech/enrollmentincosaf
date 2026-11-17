@@ -246,6 +246,12 @@ table.lista tbody tr:hover td{background:var(--azul-claro)}
 .celda-sol{line-height:1.9;white-space:nowrap}
 .sol-chip{display:inline-block;font-size:.72rem;color:var(--azul);background:var(--azul-claro);border-radius:20px;padding:2px 8px;white-space:nowrap}
 
+.consent-check{display:flex;gap:10px;align-items:flex-start;margin:10px 0;font-size:.9rem;line-height:1.45;cursor:pointer}
+.consent-check input{width:20px;height:20px;margin-top:2px;flex:none;accent-color:var(--azul)}
+.link-privacidad{background:none;border:0;padding:0;font:inherit;color:var(--azul);text-decoration:underline;cursor:pointer}
+.modal-privacidad{max-width:640px;max-height:88vh;display:flex;flex-direction:column}
+.privacidad-texto{overflow-y:auto;text-align:left;font-size:.9rem;line-height:1.5;margin:8px 0 14px;padding-right:6px}
+.privacidad-texto p{margin:0 0 10px}
 ol.compromisos{margin:12px 0 14px 22px;padding:0}
 ol.compromisos li{margin-bottom:8px}
 @media print{
@@ -259,6 +265,10 @@ ol.compromisos li{margin-bottom:8px}
   .print-memo .encabezado .sub{font-size:9pt;color:#333}
   .print-memo h2{text-align:center;font-family:'Archivo',Arial,sans-serif;font-size:13pt;letter-spacing:2px;text-decoration:underline;margin:20pt 0;text-transform:uppercase}
   .print-memo .cuerpo{text-align:justify}
+  .print-memo.memo-compacto{font-size:10.5pt;line-height:1.5;padding-top:1.8cm;padding-bottom:1.5cm}
+  .print-memo.memo-compacto h2{margin:12pt 0}
+  .print-memo.memo-compacto .firma{margin-top:40pt}
+  .print-memo.memo-compacto ol.compromisos li{margin-bottom:4pt}
   .print-memo .fecha{margin-top:24pt}
   .print-memo .firma{margin-top:70pt;text-align:center}
   .print-memo .firma .linea-firma{display:inline-block;border-top:1.2pt solid #000;padding-top:6pt;min-width:280pt;font-size:10pt}
