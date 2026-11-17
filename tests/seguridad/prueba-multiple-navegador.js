@@ -85,7 +85,7 @@ async function llenarEst(pg, n, o) {
 async function llenarApoderado(pg, correo = DEST) {
   await pg.fill('#a_nombre', 'Apoderado TEST'); await pg.fill('#a_rut', rut(22222222)); await pg.press('#a_rut', 'Tab'); await pg.fill('#a_edad', '40');
   await pg.fill('#a_dir', 'Calle Ficticia 123 TEST'); await pg.fill('#a_comuna', 'Comuna TEST'); await pg.fill('#a_nacionalidad', 'Chilena'); await pg.fill('#a_cel', '+56 9 0000 0001');
-  await pg.fill('#a_mail', correo); await pg.selectOption('#a_parentesco', { index: 1 });
+  await pg.fill('#a_mail', correo); await pg.selectOption('#a_parentesco', { index: 1 }); await pg.check('#consent_datos'); if (await pg.isVisible('#consent_sens_wrap')) await pg.check('#consent_sensibles');
 }
 const enviar = async pg => { await pg.click('#ficha button[type=submit]'); await pg.waitForTimeout(900); };
 const hojas = pg => pg.evaluate(() => document.querySelectorAll('#printArea .print-memo').length);
@@ -188,10 +188,10 @@ const H = [
     await enviar(pg); await pg.click('#btnConfirmarResumen'); await pg.waitForTimeout(1200);
     ok('al confirmar se generan los documentos', (await pant(pg)) === 'scr-memos');
     ok('se reservaron exactamente 3 folios (una sola llamada)', estado.rpcs.filter(r => r === 'reservar_folios').length === 1);
-    ok('hay 15 hojas de impresión: 5 por estudiante (3 autorizaciones + compromiso + ficha)', (await hojas(pg)) === 15, String(await hojas(pg)));
+    ok('hay 18 hojas de impresión: 6 por estudiante (3 autorizaciones + compromiso + consentimiento de datos + ficha)', (await hojas(pg)) === 18, String(await hojas(pg)));
     const memos = await pg.evaluate(() => document.getElementById('memosPantalla').innerText);
     ok('los documentos de cada estudiante llevan SU nombre y SU ficha', H.every(h => memos.includes(h.nombre)) && (memos.match(/Estudiante \d de 3/g) || []).length === 3);
-    ok('cada hoja de impresión lleva el folio de su estudiante', await pg.evaluate(() => { const hs = [...document.querySelectorAll('#printArea .print-memo')]; const f = hs.map(h => (/Ficha (\d+)/.exec(h.innerText) || [])[1]); return new Set(f).size === 3 && f.slice(0, 5).every(x => x === f[0]) && f.slice(5, 10).every(x => x === f[5]); }));
+    ok('cada hoja de impresión lleva el folio de su estudiante', await pg.evaluate(() => { const hs = [...document.querySelectorAll('#printArea .print-memo')]; const f = hs.map(h => (/Ficha (\d+)/.exec(h.innerText) || [])[1]); return new Set(f).size === 3 && f.slice(0, 6).every(x => x === f[0]) && f.slice(6, 12).every(x => x === f[6]); }));
     await capturar(pg, 'documentos_3_estudiantes');
     await finalizar(pg, 3000);
     ok('la solicitud se guarda y aparece la pantalla de comprobante', (await pant(pg)) === 'scr-done', await pant(pg));
@@ -356,7 +356,7 @@ const H = [
     await st.evaluate(() => abrirCargarCodigo()); await st.fill('#inputCodigo', cod.toLowerCase()); await st.click('#btnBuscarCodigo'); await st.waitForTimeout(900);
     ok('el funcionario carga el código y aparecen los 2 estudiantes con los datos compartidos', (await pant(st)) === 'scr-form' && (await st.inputValue('#e_nombre')) === 'Pre TEST Uno' && (await st.inputValue('#e2_nombre')) === 'Pre TEST Dos' && (await st.inputValue('#a_nombre')) === 'Apoderado TEST');
     ok('el parentesco y la condición de cada estudiante se conservan', (await st.inputValue('#e2_parentesco')) === 'Abuelo(a)' && (await st.inputValue('#e2_vive')) === 'no' && await st.isChecked('input[name=tipo_2][value=antiguo]') && await st.isChecked('input[name=tipo_1][value=nuevo]'));
-    await cerrarAviso(st); await enviar(st); await st.click('#btnConfirmarResumen'); await st.waitForTimeout(1200); await finalizar(st, 3000);
+    await cerrarAviso(st); await st.check('#consent_datos'); if (await st.isVisible('#consent_sens_wrap')) await st.check('#consent_sensibles'); await enviar(st); await st.click('#btnConfirmarResumen'); await st.waitForTimeout(1200); await finalizar(st, 3000);
     const solC = await ultimaSolicitud();
     ok('se finaliza: 2 matrículas de la misma solicitud, un solo correo con 2 certificados y la pre-matrícula se consume', (await filasDe(solC.id)).length === 2 && gs.enviados.length === 1 && gs.enviados[0].attachments.length === 2 && (await db.admin('select count(*)::int n from public.prematriculas')).rows[0].n === 0);
     await st.context().close();

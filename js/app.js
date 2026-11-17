@@ -321,8 +321,26 @@ function confirmarQuitarEstudiante(){
 }
 function quitarEstudiantesExtra(){ $("estudiantesExtra").replaceChildren(); proximoN = 2; quitarPendiente = null; }
 
+// ¿Algún estudiante del formulario declara PIE o un problema de salud? (pide la autorización expresa aparte)
+function hayDatosSensiblesEnFormulario(){
+  return [...document.querySelectorAll('#ficha input[type="radio"]:checked')].some(r => /^(pie|salud)\d*$/.test(r.name) && r.value === "si");
+}
+function actualizarConsentimientoSensible(){
+  $("fsPrivacidad").style.display = editandoKey ? "none" : "";
+  const hay = hayDatosSensiblesEnFormulario();
+  $("consent_sens_wrap").style.display = hay ? "" : "none";
+  if (!hay) $("consent_sensibles").checked = false;
+}
+document.addEventListener("change", e => { if (e.target.matches && e.target.matches('#ficha input[type="radio"]')) actualizarConsentimientoSensible(); });
+function verPrivacidad(){ abrir("ovPrivacidad"); }
+(function(){
+  const C = CONTACTO_COLEGIO, poner = (id, t) => { const el = document.getElementById(id); if (el) el.textContent = t; };
+  poner("privColegio", NOMBRE_COLEGIO); poner("privCorreo", C.correo); poner("privTelefono", C.telefono); poner("privDireccion", C.direccion);
+})();
+
 // Títulos «Estudiante N», contador, botón de añadir y texto del botón de envío
 function actualizarEtiquetas(){
+  actualizarConsentimientoSensible();
   const ns = bloques();
   ns.forEach((n, i) => {
     const t = document.querySelector(`#est${n} .est-titulo`);
@@ -465,6 +483,12 @@ function validarFicha(){
   chk("a_cel", "Celular", !v("a_cel"), malosA);
   chk("a_parentesco", "Parentesco", !v("a_parentesco"), malosA);
   if (malosA.length) problemas.push(`Apoderado titular: ${malosA.join(", ")}`);
+  // Protección de datos: el aviso y la autorización son obligatorios (la de datos sensibles solo si se informa PIE o salud)
+  // (al editar una matrícula ya guardada no se vuelve a pedir: la autorización se dio al matricular)
+  const faltaConsent = [];
+  if (!editandoKey && !$("consent_datos").checked) faltaConsent.push("marcar que leyó el Aviso de privacidad y autoriza el tratamiento de los datos");
+  if (!editandoKey && hayDatosSensiblesEnFormulario() && !$("consent_sensibles").checked) faltaConsent.push("autorizar expresamente el tratamiento de los datos de salud/PIE informados");
+  if (faltaConsent.length) problemas.push(`Protección de datos: falta ${faltaConsent.join(" y ")}`);
 
   // Suplente (si se registra)
   if (document.querySelector('input[name="sup"]:checked')?.value==="si"){
@@ -661,7 +685,7 @@ function mostrarResumen(sol){
       filaResumen("Curso 2027", E.cursoMatricula || "No indicado"),
       x.tipo === "nuevo" ? filaResumen("Colegio de procedencia", E.procedencia) : "",
       filaResumen("Parentesco con este estudiante", F.apoderado.parentesco),
-      filaResumen("Documentos requeridos", `3 autorizaciones, compromiso del apoderado, ficha de antecedentes y certificado PDF (se generan al continuar). ${pie}.`),
+      filaResumen("Documentos requeridos", `3 autorizaciones, compromiso del apoderado, consentimiento de datos, ficha de antecedentes y certificado PDF (se generan al continuar). ${pie}.`),
       el("div", { class: "resumen-fila" }, el("b", { texto: "Validación:" }), el("span", { class: "estado ok", texto: "✔ Campos obligatorios completos" })),
       el("div", { class: "resumen-acciones" }, el("button", { type: "button", class: "btn btn-ghost", texto: "✏️ Editar este estudiante", datos: { click: "editarEstudianteResumen", args: JSON.stringify([ns[i]]) } })));
   }));
@@ -834,6 +858,22 @@ function textoIntroCompromiso(f){
 }
 const TEXTO_CIERRE_COMPROMISO = "Declaro haber leído y comprendido este compromiso, y lo firmo de manera voluntaria.";
 
+// Consentimiento para el tratamiento de datos personales (pantalla, hoja impresa y PDF del correo usan el mismo texto)
+const CONSENTIMIENTO_PUNTOS = [
+  { t:"Responsable y finalidad.", d:`Los datos serán tratados por el ${NOMBRE_COLEGIO} únicamente para gestionar el proceso de matrícula 2027, cumplir sus fines educativos y las obligaciones que la normativa educacional le impone.` },
+  { t:"Veracidad.", d:"Declaro que los datos entregados son verídicos y me comprometo a informar cualquier cambio." },
+  { t:"Uso interno y comunicación.", d:"Los datos son de uso interno del establecimiento y solo los conoce el personal autorizado. No se entregarán a terceros, salvo a organismos públicos cuando la ley lo exija (por ejemplo, el Ministerio de Educación) y a los proveedores tecnológicos que alojan el sistema y envían el correo, bajo medidas de seguridad." },
+  { t:"Seguridad y conservación.", d:"Los datos se resguardan con medidas de seguridad técnicas y organizativas y se conservarán mientras el estudiante esté matriculado y durante los plazos que exija la normativa." },
+  { t:"Mis derechos.", d:`Puedo solicitar acceso, rectificación, supresión u oposición al tratamiento de los datos, en los casos que la ley lo permite, escribiendo a ${CONTACTO_COLEGIO.correo} o en ${CONTACTO_COLEGIO.direccion}.` }
+];
+const TEXTO_SENSIBLES = "Datos de salud y apoyo educativo. Autorizo expresamente el tratamiento de los datos de salud y/o diagnóstico del estudiante informados en la ficha, con la única finalidad de brindar apoyo educativo y resguardar su bienestar.";
+const TEXTO_CIERRE_CONSENTIMIENTO = "Declaro haber leído y comprendido este documento y el Aviso de privacidad del establecimiento, y lo firmo de manera voluntaria.";
+function tieneDatosSensibles(f){ return f.estudiante.pie === "si" || f.estudiante.salud === "si"; }
+function textoIntroConsentimiento(f){
+  const A = f.apoderado, E = f.estudiante;
+  return `Yo, ${A.nombre}, RUT ${A.rut}, apoderado(a) titular del(la) estudiante ${E.nombre}, RUT ${E.rut}, declaro haber sido informado(a) sobre el tratamiento de los datos personales de mi pupilo(a) y de los míos, y manifiesto lo siguiente:`;
+}
+
 function textosMemos(f){
   const A = f.apoderado, E = f.estudiante;
   const hoy = new Date().toLocaleDateString("es-CL",{day:"numeric",month:"long",year:"numeric"});
@@ -845,7 +885,9 @@ function textosMemos(f){
     { titulo:"Autorización de salidas pedagógicas",
       cuerpo:h`Yo, <b>${A.nombre}</b>, RUT <b>${A.rut}</b>, apoderado(a) titular del(la) estudiante <b>${E.nombre}</b>, RUT <b>${E.rut}</b>, autorizo a mi pupilo(a) a participar en las <b>salidas pedagógicas</b> organizadas por el <b>${NOMBRE_COLEGIO}</b> durante el año escolar 2027, dentro y fuera de la comuna, siempre que estas cuenten con la supervisión de docentes y/o asistentes de la educación del establecimiento y se realicen en el marco de los objetivos de aprendizaje del plan de estudios.<br><br>Declaro que seré oportunamente informado(a) de cada salida (fecha, lugar y horario) a través de los canales oficiales del establecimiento.` },
     { titulo:"Compromiso del apoderado(a)",
-      cuerpo:h`Yo, <b>${A.nombre}</b>, RUT <b>${A.rut}</b>, apoderado(a) titular del(la) estudiante <b>${E.nombre}</b>, RUT <b>${E.rut}</b>, matriculado(a) en el <b>${NOMBRE_COLEGIO}</b> para el año escolar 2027, me comprometo a:<ol class="compromisos">${COMPROMISOS_APODERADO.map(c => h`<li><b>${c.t}</b> ${c.d}</li>`)}</ol>${TEXTO_CIERRE_COMPROMISO}` }
+      cuerpo:h`Yo, <b>${A.nombre}</b>, RUT <b>${A.rut}</b>, apoderado(a) titular del(la) estudiante <b>${E.nombre}</b>, RUT <b>${E.rut}</b>, matriculado(a) en el <b>${NOMBRE_COLEGIO}</b> para el año escolar 2027, me comprometo a:<ol class="compromisos">${COMPROMISOS_APODERADO.map(c => h`<li><b>${c.t}</b> ${c.d}</li>`)}</ol>${TEXTO_CIERRE_COMPROMISO}` },
+    { titulo:"Consentimiento para el tratamiento de datos personales", compacto:true,
+      cuerpo:h`${textoIntroConsentimiento(f)}<ol class="compromisos">${CONSENTIMIENTO_PUNTOS.map(c => h`<li><b>${c.t}</b> ${c.d}</li>`)}</ol>${tieneDatosSensibles(f) ? h`<p><b>Datos de salud y apoyo educativo.</b> ${TEXTO_SENSIBLES.replace("Datos de salud y apoyo educativo. ", "")}</p>` : ""}<p>${TEXTO_CIERRE_CONSENTIMIENTO}</p>` }
   ].map(m=>({...m, fecha:`San Fernando, ${hoy}.`,
     firma:h`${A.nombre} — RUT ${A.rut}<br>Firma del apoderado(a) titular`}));
 }
@@ -941,7 +983,7 @@ function htmlMemosPantalla(f){
 function htmlMemosImpresion(f){
   const memos = textosMemos(f);
   return h`${memos.map(m => h`
-    <div class="print-memo">
+    <div class="print-memo${m.compacto ? " memo-compacto" : ""}">
       <div class="encabezado">
         <div class="colegio">${NOMBRE_COLEGIO}</div>
         <div class="sub">Proceso de Matrícula 2027 — Ficha ${f.folio}</div>
@@ -990,6 +1032,35 @@ function imprimirMemos(){
   setTimeout(()=>abrir("ovFirma"), 400);
 }
 
+// Una página de documento con logo, título, texto numerado, firma y pie (la usan el compromiso y el consentimiento)
+function agregarPaginaDocumento(doc, f, d){
+  const ancho = doc.internal.pageSize.getWidth();
+  const A = f.apoderado, lh = d.tam * 0.5;
+  const hoy = new Date().toLocaleDateString("es-CL", { day:"numeric", month:"long", year:"numeric" });
+  doc.addPage();
+  doc.addImage(LOGO_IMG, "PNG", (ancho-20)/2, 14, 20, 27.1);
+  doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(0);
+  doc.text(NOMBRE_COLEGIO, ancho/2, 49, { align: "center", maxWidth: ancho-40 });
+  doc.setFontSize(d.titulo.length > 40 ? 12 : 15);
+  doc.text(d.titulo, ancho/2, 58, { align: "center", maxWidth: ancho-30 });
+  doc.setFont("helvetica", "normal"); doc.setFontSize(d.tam);
+  let y = 70;
+  const parrafo = (txt, x, w) => { const lin = doc.splitTextToSize(txt, w); doc.text(lin, x, y); y += lin.length*lh + 2.5; };
+  parrafo(d.intro, 20, ancho-40);
+  d.items.forEach((c, i) => parrafo(`${i+1}. ${c.t} ${c.d}`, 25, ancho-50));
+  if (d.extra) parrafo(d.extra, 20, ancho-40);
+  parrafo(d.cierre, 20, ancho-40);
+  y += 4;
+  doc.text(`San Fernando, ${hoy}.`, 20, y); y += 24;
+  doc.line(20, y, 100, y);
+  doc.setFontSize(9);
+  doc.text(`${A.nombre} - RUT ${A.rut}`, 20, y+5, { maxWidth: 90 });
+  doc.text("Firma del apoderado(a) titular", 20, y+10);
+  doc.setTextColor(120);
+  doc.text(`Ficha de matrícula ${f.folio}. Copia informativa del documento que se firma en el establecimiento.`, ancho/2, 275, { align:"center", maxWidth: ancho-30 });
+  doc.setTextColor(0);
+}
+
 /* ---------- Comprobante de matrícula en PDF (para adjuntar al correo) ---------- */
 function generarComprobantePDFBase64(f){
   const { jsPDF } = window.jspdf;
@@ -1030,31 +1101,10 @@ function generarComprobantePDFBase64(f){
   doc.setTextColor(120);
   doc.text("Este certificado acredita el registro de la matrícula en el sistema del establecimiento.", ancho/2, 275, { align:"center", maxWidth: ancho-30 });
 
-  // Página 2: compromiso del apoderado (mismo texto que la hoja impresa; esta copia llega por correo)
-  doc.addPage();
-  doc.addImage(LOGO_IMG, "PNG", (ancho-20)/2, 16, 20, 27.1);
-  doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(0);
-  doc.text(NOMBRE_COLEGIO, ancho/2, 52, { align: "center", maxWidth: ancho-40 });
-  doc.setFontSize(15);
-  doc.text("COMPROMISO DEL APODERADO(A)", ancho/2, 64, { align: "center" });
-  doc.setFont("helvetica", "normal"); doc.setFontSize(11);
-  let y = 80;
-  const intro = doc.splitTextToSize(textoIntroCompromiso(f), ancho-40);
-  doc.text(intro, 20, y); y += intro.length*6 + 4;
-  COMPROMISOS_APODERADO.forEach((c, i) => {
-    const lin = doc.splitTextToSize(`${i+1}. ${c.t} ${c.d}`, ancho-50);
-    doc.text(lin, 25, y); y += lin.length*6 + 3;
-  });
-  y += 4;
-  const cierre = doc.splitTextToSize(TEXTO_CIERRE_COMPROMISO, ancho-40);
-  doc.text(cierre, 20, y); y += cierre.length*6 + 10;
-  doc.text(`San Fernando, ${hoy}.`, 20, y); y += 30;
-  doc.line(20, y, 100, y);
-  doc.setFontSize(9);
-  doc.text(`${A.nombre} - RUT ${A.rut}`, 20, y+5, { maxWidth: 90 });
-  doc.text("Firma del apoderado(a) titular", 20, y+10);
-  doc.setTextColor(120);
-  doc.text(`Ficha de matrícula ${f.folio}. Copia informativa del documento que se firma en el establecimiento.`, ancho/2, 275, { align:"center", maxWidth: ancho-30 });
+  // Página 2: compromiso del apoderado · Página 3: consentimiento de datos (mismo texto que las hojas impresas; esta copia llega por correo)
+  agregarPaginaDocumento(doc, f, { titulo: "COMPROMISO DEL APODERADO(A)", intro: textoIntroCompromiso(f), items: COMPROMISOS_APODERADO, extra: "", cierre: TEXTO_CIERRE_COMPROMISO, tam: 11 });
+  agregarPaginaDocumento(doc, f, { titulo: "CONSENTIMIENTO PARA EL TRATAMIENTO DE DATOS PERSONALES", intro: textoIntroConsentimiento(f), items: CONSENTIMIENTO_PUNTOS,
+    extra: tieneDatosSensibles(f) ? TEXTO_SENSIBLES : "", cierre: TEXTO_CIERRE_CONSENTIMIENTO, tam: 9.5 });
 
   return doc.output("datauristring").split(",")[1];
 }
@@ -1589,7 +1639,7 @@ const ACCIONES = {
   abrirCargarCodigo, abrirContadorFolio, actualizarLugarTrabajo, aplicarFiltrosAdmin, cargarPrematricula, cerrar, cerrarAcceso,
   copiarLinkApoderado, descargarExcel, descargarExcelLibro, eliminarMatricula, finalizarMatricula, guardarContadorFolio,
   guardarFolioFicha, imprimirMemos, iniciarFicha, limpiarFiltrosAdmin, mostrar, mostrarQR, nuevaMatricula, pedirClaveAdmin,
-  toggleSub, validarClave, volverInicio, alternarClave,
+  toggleSub, validarClave, volverInicio, alternarClave, verPrivacidad,
   // varios estudiantes y correo
   anadirEstudiante, cambiarTipo, pedirQuitarEstudiante, confirmarQuitarEstudiante, confirmarResumen, editarEstudianteResumen,
   reintentarCorreo, reenviarCorreo,

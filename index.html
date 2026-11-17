@@ -382,6 +382,14 @@
         </div>
       </fieldset>
 
+      <!-- Ítem 4 -->
+      <fieldset id="fsPrivacidad">
+        <legend><span>Ítem 4</span> Protección de datos personales</legend>
+        <p class="hint" style="font-size:.85rem;margin:0 0 12px">Los datos de este formulario se usan solo para la matrícula y los fines educativos del establecimiento, se guardan con medidas de seguridad y solo los conoce el personal autorizado. <button type="button" class="link-privacidad" data-click="verPrivacidad">Leer el Aviso de privacidad</button></p>
+        <label class="consent-check"><input type="checkbox" id="consent_datos"><span>He leído el <button type="button" class="link-privacidad" data-click="verPrivacidad">Aviso de privacidad</button>, declaro que los datos entregados son verídicos y autorizo su tratamiento para la matrícula y los fines educativos del establecimiento. <span class="req">*</span></span></label>
+        <label class="consent-check" id="consent_sens_wrap" style="display:none"><input type="checkbox" id="consent_sensibles"><span>Autorizo expresamente el tratamiento de los datos de salud y/o diagnóstico (PIE) que informé, con la única finalidad de brindar apoyo educativo y resguardar el bienestar del(la) estudiante. <span class="req">*</span></span></label>
+      </fieldset>
+
       <div class="form-actions">
         <button type="button" class="btn btn-ghost" data-click="volverInicio">← Cancelar</button>
         <button type="submit" class="btn btn-pri">Generar documentos de matrícula →</button>
@@ -404,7 +412,7 @@
   <section id="scr-memos" class="screen">
     <div class="banner-verificar">⚠️ Por favor verifica que todos los datos estén correctos antes de imprimir.</div>
     <div class="memo-intro">
-      <b>Documentos generados.</b> Imprime las autorizaciones y el compromiso del apoderado, y entrégalos al apoderado para su <b>firma manual</b>. Una vez firmadas, presiona «Imprimir documentos» y luego «Finalizar matrícula» para guardar los datos y enviar el comprobante al correo del apoderado.
+      <b>Documentos generados.</b> Imprime las autorizaciones, el compromiso del apoderado y el consentimiento de datos, y entrégalos al apoderado para su <b>firma manual</b>. Una vez firmadas, presiona «Imprimir documentos» y luego «Finalizar matrícula» para guardar los datos y enviar el comprobante al correo del apoderado.
     </div>
     <div id="memosPantalla"></div>
     <div class="memo-actions">
@@ -494,6 +502,25 @@
     <div class="modal-btns">
       <button class="btn btn-ghost" data-click="cerrar" data-args='["ovFirma"]'>Aún no</button>
       <button class="btn btn-pri" id="btnFinalizar" data-click="finalizarMatricula">Finalizar ✓</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="ovPrivacidad">
+  <div class="modal modal-privacidad">
+    <h3>Aviso de privacidad</h3>
+    <div class="privacidad-texto">
+      <p><b>Responsable.</b> <span id="privColegio"></span>. Contacto: <span id="privCorreo"></span> · <span id="privTelefono"></span> · <span id="privDireccion"></span>.</p>
+      <p><b>Qué datos pedimos.</b> Datos del estudiante y de su apoderado (identificación, contacto, domicilio, curso o procedencia y antecedentes del apoderado). Si corresponde, también datos de salud o del Programa de Integración Escolar (PIE), que son sensibles y se tratan solo con su autorización expresa.</p>
+      <p><b>Para qué los usamos.</b> Para gestionar la matrícula 2027, cumplir los fines educativos del establecimiento y las obligaciones que la normativa educacional nos impone. No se usan para otros fines.</p>
+      <p><b>Quién los ve.</b> Solo el personal autorizado del establecimiento, con clave de acceso. No se entregan a terceros, salvo a organismos públicos cuando la ley lo exige (por ejemplo, el Ministerio de Educación) y a los proveedores tecnológicos que alojan el sistema y envían el correo, bajo medidas de seguridad.</p>
+      <p><b>Cómo los protegemos.</b> El acceso exige una clave que se guarda cifrada, las sesiones vencen solas, los intentos fallidos se bloquean y los accesos quedan registrados. Ningún sistema es infalible; si ocurriera un incidente que afecte sus datos, se actuará conforme a la ley.</p>
+      <p><b>Cuánto tiempo.</b> Una pre-matrícula no completada se elimina automáticamente a los 30 días. Los datos de una matrícula se conservan mientras el estudiante esté matriculado y durante los plazos que exija la normativa.</p>
+      <p><b>Sus derechos.</b> Puede pedir acceso a sus datos, su rectificación, su supresión u oponerse a su tratamiento, en los casos que la ley lo permite, escribiendo al contacto indicado arriba.</p>
+      <p><b>Menores de edad.</b> Los datos de niños, niñas y adolescentes se tratan resguardando su interés superior.</p>
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-pri" data-click="cerrar" data-args='["ovPrivacidad"]'>Entendido</button>
     </div>
   </div>
 </div>
