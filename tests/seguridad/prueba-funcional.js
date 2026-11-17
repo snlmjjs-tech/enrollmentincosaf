@@ -58,7 +58,7 @@ async function llenar(pg, o) {
   await radio(pg, 'rep', 'no'); await radio(pg, 'pie', o.pie || 'no'); if (o.pie === 'si') { await set('e_pieDiag', 'Diagnóstico TEST'); await radio(pg, 'pieDoc', 'si'); }
   await radio(pg, 'salud', o.salud || 'no'); if (o.salud === 'si') await set('e_saludDet', 'Detalle salud TEST');
   await set('a_nombre', o.apo || 'Apoderado TEST'); await set('a_rut', o.rutA); await pg.press('#a_rut', 'Tab'); await set('a_edad', '40'); await set('a_dir', 'Calle Ficticia 123 TEST'); await set('a_comuna', 'Comuna TEST'); await set('a_nacionalidad', 'Chilena'); await set('a_cel', '+56 9 0000 0001'); await set('a_mail', o.mailA === undefined ? '' : o.mailA);
-  await pg.selectOption('#a_parentesco', { index: 1 }); await pg.check('#consent_datos'); await pg.selectOption('#a_nivel', { index: 1 }); await pg.selectOption('#a_laboral', { index: 1 });
+  await pg.selectOption('#a_parentesco', { index: 1 }); await pg.check('#consent_datos'); if (o.pie === 'si' || o.salud === 'si') await pg.check('#consent_sensibles'); await pg.selectOption('#a_nivel', { index: 1 }); await pg.selectOption('#a_laboral', { index: 1 });
   if (o.sup) { await radio(pg, 'sup', 'si'); await set('s_nombre', 'Suplente TEST'); await set('s_rut', o.rutS); await pg.press('#s_rut', 'Tab'); await set('s_edad', '35'); await set('s_dir', 'Calle Ficticia 9 TEST'); await set('s_comuna', 'Comuna TEST'); await set('s_nacionalidad', 'Chilena'); await set('s_cel', '+56 9 0000 0002'); await pg.selectOption('#s_parentesco', { index: 1 }); }
 }
 const enviar = async pg => { await pg.click('#ficha button[type=submit]'); await pg.waitForTimeout(1000); };
@@ -87,7 +87,14 @@ const textoPdf = buf => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'incos
     await llenar(pg, { tipo: 'nuevo', nombre: 'Estudiante TEST Uno', rut: '11111111-9', rutA: R2, mailA: DEST, sup: true, rutS: R3, pie: 'si', salud: 'si' });
     await enviar(pg);
     ok('un RUT inválido (dígito verificador incorrecto) se rechaza', (await pant(pg)) === 'scr-form' && await pg.evaluate(() => document.getElementById('e_rut').classList.contains('bad')));
-    await pg.fill('#e_rut', R1); await pg.press('#e_rut', 'Tab'); await enviar(pg);
+    await pg.fill('#e_rut', R1); await pg.press('#e_rut', 'Tab');
+    const banner = () => pg.evaluate(() => document.getElementById('bannerErr').innerText);
+    ok('con PIE y salud declarados aparece la autorización expresa de datos de salud', await pg.isVisible('#consent_sens_wrap'));
+    await pg.uncheck('#consent_datos'); await enviar(pg);
+    ok('sin marcar el Aviso de privacidad NO avanza y lo indica', (await pant(pg)) === 'scr-form' && /Protección de datos/.test(await banner()));
+    await pg.check('#consent_datos'); await pg.uncheck('#consent_sensibles'); await enviar(pg);
+    ok('con PIE/salud y sin la autorización expresa de esos datos NO avanza y lo indica', (await pant(pg)) === 'scr-form' && /salud\/PIE/.test(await banner()));
+    await pg.check('#consent_sensibles'); await enviar(pg);
     ok('con todo completo y un RUT válido, genera los documentos (sin pantalla de resumen: es un solo estudiante)', (await pant(pg)) === 'scr-memos', await pant(pg));
     const txtPrint = await pg.evaluate(() => document.getElementById('printArea').innerText + document.getElementById('memosPantalla').innerText);
     ok('los documentos contienen los datos TEST ingresados (estudiante, apoderado y suplente)', /Estudiante TEST Uno/.test(txtPrint) && /Apoderado TEST/.test(txtPrint) && /Suplente TEST/.test(txtPrint));

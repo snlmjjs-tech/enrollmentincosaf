@@ -85,7 +85,7 @@ async function llenarEst(pg, n, o) {
 async function llenarApoderado(pg, correo = DEST) {
   await pg.fill('#a_nombre', 'Apoderado TEST'); await pg.fill('#a_rut', rut(22222222)); await pg.press('#a_rut', 'Tab'); await pg.fill('#a_edad', '40');
   await pg.fill('#a_dir', 'Calle Ficticia 123 TEST'); await pg.fill('#a_comuna', 'Comuna TEST'); await pg.fill('#a_nacionalidad', 'Chilena'); await pg.fill('#a_cel', '+56 9 0000 0001');
-  await pg.fill('#a_mail', correo); await pg.selectOption('#a_parentesco', { index: 1 }); await pg.check('#consent_datos');
+  await pg.fill('#a_mail', correo); await pg.selectOption('#a_parentesco', { index: 1 }); await pg.check('#consent_datos'); if (await pg.isVisible('#consent_sens_wrap')) await pg.check('#consent_sensibles');
 }
 const enviar = async pg => { await pg.click('#ficha button[type=submit]'); await pg.waitForTimeout(900); };
 const hojas = pg => pg.evaluate(() => document.querySelectorAll('#printArea .print-memo').length);

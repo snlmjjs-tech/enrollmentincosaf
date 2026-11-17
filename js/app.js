@@ -326,6 +326,7 @@ function hayDatosSensiblesEnFormulario(){
   return [...document.querySelectorAll('#ficha input[type="radio"]:checked')].some(r => /^(pie|salud)\d*$/.test(r.name) && r.value === "si");
 }
 function actualizarConsentimientoSensible(){
+  $("fsPrivacidad").style.display = editandoKey ? "none" : "";
   const hay = hayDatosSensiblesEnFormulario();
   $("consent_sens_wrap").style.display = hay ? "" : "none";
   if (!hay) $("consent_sensibles").checked = false;
@@ -483,9 +484,10 @@ function validarFicha(){
   chk("a_parentesco", "Parentesco", !v("a_parentesco"), malosA);
   if (malosA.length) problemas.push(`Apoderado titular: ${malosA.join(", ")}`);
   // Protección de datos: el aviso y la autorización son obligatorios (la de datos sensibles solo si se informa PIE o salud)
+  // (al editar una matrícula ya guardada no se vuelve a pedir: la autorización se dio al matricular)
   const faltaConsent = [];
-  if (!$("consent_datos").checked) faltaConsent.push("marcar que leyó el Aviso de privacidad y autoriza el tratamiento de los datos");
-  if (hayDatosSensiblesEnFormulario() && !$("consent_sensibles").checked) faltaConsent.push("autorizar expresamente el tratamiento de los datos de salud/PIE informados");
+  if (!editandoKey && !$("consent_datos").checked) faltaConsent.push("marcar que leyó el Aviso de privacidad y autoriza el tratamiento de los datos");
+  if (!editandoKey && hayDatosSensiblesEnFormulario() && !$("consent_sensibles").checked) faltaConsent.push("autorizar expresamente el tratamiento de los datos de salud/PIE informados");
   if (faltaConsent.length) problemas.push(`Protección de datos: falta ${faltaConsent.join(" y ")}`);
 
   // Suplente (si se registra)
