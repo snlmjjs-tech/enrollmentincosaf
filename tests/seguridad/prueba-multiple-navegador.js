@@ -356,7 +356,7 @@ const H = [
     await st.evaluate(() => abrirCargarCodigo()); await st.fill('#inputCodigo', cod.toLowerCase()); await st.click('#btnBuscarCodigo'); await st.waitForTimeout(900);
     ok('el funcionario carga el código y aparecen los 2 estudiantes con los datos compartidos', (await pant(st)) === 'scr-form' && (await st.inputValue('#e_nombre')) === 'Pre TEST Uno' && (await st.inputValue('#e2_nombre')) === 'Pre TEST Dos' && (await st.inputValue('#a_nombre')) === 'Apoderado TEST');
     ok('el parentesco y la condición de cada estudiante se conservan', (await st.inputValue('#e2_parentesco')) === 'Abuelo(a)' && (await st.inputValue('#e2_vive')) === 'no' && await st.isChecked('input[name=tipo_2][value=antiguo]') && await st.isChecked('input[name=tipo_1][value=nuevo]'));
-    await cerrarAviso(st); await enviar(st); await st.click('#btnConfirmarResumen'); await st.waitForTimeout(1200); await finalizar(st, 3000);
+    await cerrarAviso(st); await st.check('#consent_datos'); if (await st.isVisible('#consent_sens_wrap')) await st.check('#consent_sensibles'); await enviar(st); await st.click('#btnConfirmarResumen'); await st.waitForTimeout(1200); await finalizar(st, 3000);
     const solC = await ultimaSolicitud();
     ok('se finaliza: 2 matrículas de la misma solicitud, un solo correo con 2 certificados y la pre-matrícula se consume', (await filasDe(solC.id)).length === 2 && gs.enviados.length === 1 && gs.enviados[0].attachments.length === 2 && (await db.admin('select count(*)::int n from public.prematriculas')).rows[0].n === 0);
     await st.context().close();

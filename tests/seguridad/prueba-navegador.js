@@ -309,7 +309,7 @@ function servidorEstatico() {
     pg = await nuevaPagina(base + '/index.html');
     await entrarPersonal(pg);
     estado.falloInterno = true;
-    await pg.click('.card-btn:nth-child(1)'); await pg.fill('#e_rut', '2179'); await pg.press('#e_rut', 'Tab'); await pg.click('#ficha button[type=submit]'); await pg.waitForTimeout(900);
+    await pg.click('.card-btn:nth-child(1)'); await pg.fill('#e_rut', '2179'); await pg.press('#e_rut', 'Tab'); await pg.check('#consent_datos'); await pg.click('#ficha button[type=submit]'); await pg.waitForTimeout(900);
     const errTexto = await pg.textContent('#avisoTexto');
     ok('un error interno del servidor NO muestra nombres de tablas ni detalles técnicos', !/relation|secreto_interno|public\./.test(errTexto) && /problema/i.test(errTexto), errTexto);
     estado.falloInterno = false;

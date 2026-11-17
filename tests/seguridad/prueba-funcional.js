@@ -176,7 +176,11 @@ const textoPdf = buf => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'incos
     await st.evaluate(() => abrirCargarCodigo()); await st.fill('#inputCodigo', codA.toLowerCase().replace('-', ' ')); await st.click('#btnBuscarCodigo'); await st.waitForTimeout(900);
     ok('el funcionario carga ALFA con su código y ve SOLO sus datos', (await st.inputValue('#e_nombre')) === 'Prematricula TEST Alfa' && (await st.inputValue('#a_mail')) === 'apo.alfa@example.invalid');
     ok('no aparecen datos de BETA', !(await st.evaluate(() => document.body.innerText + [...document.querySelectorAll('input')].map(i => i.value).join(' '))).includes('Beta'));
-    await cerrarAviso(st); await enviar(st); await finalizar(st);
+    await cerrarAviso(st);
+    ok('al cargar una pre-matrícula NO se da por aceptado el consentimiento: hay que marcarlo', !(await st.isChecked('#consent_datos')));
+    await enviar(st);
+    ok('sin marcar el consentimiento no se puede generar los documentos de una pre-matrícula', (await pant(st)) === 'scr-form');
+    await st.check('#consent_datos'); if (await st.isVisible('#consent_sens_wrap')) await st.check('#consent_sensibles'); await enviar(st); await finalizar(st);
     ok('al finalizar, la pre-matrícula ALFA se consume y la BETA no se altera', (await db.admin(`select count(*)::int n from public.prematriculas where datos->'estudiante'->>'nombre'='Prematricula TEST Alfa'`)).rows[0].n === 0 && (await db.admin(`select count(*)::int n from public.prematriculas where datos->'estudiante'->>'nombre'='Prematricula TEST Beta'`)).rows[0].n === 1);
     await st.evaluate(() => volverInicio()); await st.evaluate(() => abrirCargarCodigo()); await st.fill('#inputCodigo', codA); await st.click('#btnBuscarCodigo'); await st.waitForTimeout(800);
     ok('reusar el código ALFA ya no entrega datos', (await pant(st)) !== 'scr-form' || (await st.inputValue('#e_nombre')) === '');
