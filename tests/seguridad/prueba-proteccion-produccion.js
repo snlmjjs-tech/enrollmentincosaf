@@ -37,7 +37,7 @@ const archivos = [...suites.filter(f => f !== path.basename(__filename)).map(f =
 const prohibido = /require\(['"](https|net|tls|dgram|child_process\/exec)['"]\)|https?\.request\(|https?\.get\(|net\.connect|\bfetch\(|XMLHttpRequest|axios|node-fetch/;
 for (const f of archivos) { const t = fs.readFileSync(f, 'utf8'); ok(`${path.relative(RAIZ, f)} no abre conexiones a internet`, !prohibido.test(t), (t.match(prohibido) || [])[0]); }
 const conProd = archivos.filter(f => fs.readFileSync(f, 'utf8').includes(REF_PROD));
-ok('el ID de producción solo aparece donde corresponde (guardia, generador, y suites que lo interceptan en el navegador)', conProd.every(f => /guardia-entorno|preparar-prueba|prueba-(navegador|multiple-navegador|funcional|pagina-actual|generador|proteccion-produccion|codegs)/.test(f)), conProd.map(f => path.basename(f)).join(','));
+ok('el ID de producción solo aparece donde corresponde (guardia, generador, y suites que lo interceptan en el navegador)', conProd.every(f => /guardia-entorno|preparar-prueba|prueba-(navegador|multiple-navegador|cifrado-navegador|funcional|pagina-actual|generador|proteccion-produccion|codegs)/.test(f)), conProd.map(f => path.basename(f)).join(','));
 const navegadores = ['prueba-navegador.js', 'prueba-multiple-navegador.js', 'prueba-pagina-actual.js'];
 ok('las suites de navegador interceptan TODAS las llamadas a Supabase y al script de Google (page.route)', navegadores.every(f => /\.route\(/.test(fs.readFileSync(path.join(__dirname, f), 'utf8')) && /supabase\.co|URL_SUPABASE/.test(fs.readFileSync(path.join(__dirname, f), 'utf8'))));
 
