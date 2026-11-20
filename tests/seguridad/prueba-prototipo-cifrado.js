@@ -100,7 +100,21 @@ const voltea = b64 => { const b = Buffer.from(b64, 'base64'); b[Math.floor(b.len
   const archivoDesc = JSON.parse(fs.readFileSync(rutaLlave, 'utf8'));
   ok('se descarga el archivo de llave con su protección', dl.suggestedFilename() === 'llave-del-colegio.json' && archivoDesc.privada.iteraciones >= 600000);
   ok('además del archivo, la pantalla muestra el TEXTO de la llave para copiarlo (por si la descarga no funciona, como en el iPad)', await pg.isVisible('#textoLlave') && JSON.stringify(JSON.parse(await pg.inputValue('#textoLlave'))) === JSON.stringify(archivoDesc));
+  const pub = await pg.inputValue('#textoPublica');
+  ok('se muestran los datos PÚBLICOS de la llave para pegarlos en la página real (sin ningún dato de la llave privada)', /^window\.LLAVE_PUBLICA_COLEGIO = \{"kid":"[0-9a-f]{16}","publica":"[A-Za-z0-9+\/=]+"\};$/.test(pub) && !/privada|datos|sal|iv/.test(pub.replace('publica', '').replace('LLAVE_PUBLICA_COLEGIO', '')) && pub.includes(archivoDesc.kid));
   ok('en el navegador solo queda la llave PÚBLICA: ni la clave ni la llave privada se guardan', await pg.evaluate(() => { const t = JSON.stringify(Object.assign({}, localStorage)); return !t.includes('privada') && !t.includes('pato-lluvia'); }));
+
+  // Copia de la llave para otra persona (con su propia clave)
+  const CLAVE_C = 'tercera-clave-persona-tres-33';
+  await pg.fill('#copiaTexto', fs.readFileSync(rutaLlave, 'utf8')); await pg.fill('#copiaClaveActual', FUERTE + 'mal'); await pg.fill('#copiaClave1', CLAVE_C); await pg.fill('#copiaClave2', CLAVE_C); await pg.fill('#copiaNombre', 'Inspector Pérez'); await pg.click('#btnCrearCopia');
+  await pg.waitForFunction(() => /no es correcta/.test(document.getElementById('msgCopia').textContent));
+  ok('para crear una copia hace falta la clave actual: con una equivocada se rechaza', await pg.isHidden('#cajaCopia'));
+  await pg.fill('#copiaClaveActual', FUERTE); await pg.fill('#copiaClave1', CLAVE_C); await pg.fill('#copiaClave2', CLAVE_C); await pg.click('#btnCrearCopia'); await pg.waitForSelector('#btnDescargarCopia:not([hidden])');
+  const [dc] = await Promise.all([pg.waitForEvent('download'), pg.click('#btnDescargarCopia')]);
+  const rutaCopia = path.join(path.dirname(rutaLlave), 'copia.json'); await dc.saveAs(rutaCopia); const copiaDesc = JSON.parse(fs.readFileSync(rutaCopia, 'utf8'));
+  ok('se descarga la copia (nombre con la persona) con la MISMA llave pero otra protección', dc.suggestedFilename() === 'llave-del-colegio-inspector-p-rez.json' && copiaDesc.kid === archivoDesc.kid && copiaDesc.privada.datos !== archivoDesc.privada.datos && (await pg.inputValue('#copiaClave1')) === '');
+  await pg.fill('#clave1', 'x');   // (solo para que el siguiente bloque encuentre el formulario limpio)
+  await pg.fill('#clave1', '');
 
   await tab('apoderado');
   for (let i = 1; i <= 3; i++) { await pg.click('#btnEjemplo'); await pg.click('#formFicha button[type=submit]'); await pg.waitForSelector('#resultadoEnvio:not([hidden])'); }
@@ -136,6 +150,12 @@ const voltea = b64 => { const b = Buffer.from(b64, 'base64'); b[Math.floor(b.len
   await pg.click('#btnCopiarTabla');
   const tsv = await pg.inputValue('#textoTabla');
   ok('«Copiar tabla» arma el texto con columnas para pegar en Excel o Numbers (sin necesitar descargas)', tsv.startsWith('Folio\tEstudiante\tRUT') && tsv.includes('Estudiante de Prueba 2') && tsv.split('\n').length === 4);
+  await pg.click('#btnBloquear');
+  await pg.setInputFiles('#archivoLlave', rutaCopia); await pg.fill('#claveAbrir', FUERTE); await pg.click('#btnAbrir');
+  await pg.waitForFunction(() => /incorrecta/.test(document.getElementById('msgAbrir').textContent));
+  ok('la copia de la segunda persona NO se abre con la clave de la primera', await pg.isHidden('#abierto'));
+  await pg.fill('#claveAbrir', CLAVE_C); await pg.click('#btnAbrir'); await pg.waitForSelector('#abierto:not([hidden])');
+  ok('la copia de la segunda persona, con SU clave, abre los mismos datos (3 matrículas)', (await pg.locator('#tablaPanel tbody tr').count()) === 3 && (await pg.textContent('#tablaPanel')).includes('Estudiante de Prueba 2'));
   await pg.click('#btnBloquear');
   ok('al bloquear desaparecen los datos de la pantalla', await pg.isVisible('#bloqueado') && (await pg.locator('#tablaPanel tbody tr').count()) === 0 && (await texto2()).indexOf('Estudiante de Prueba 2') === -1);
 

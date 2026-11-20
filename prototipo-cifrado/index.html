@@ -40,7 +40,26 @@
       <div class="acciones"><button type="button" id="btnCopiarLlave" class="btn sec">Copiar texto de la llave</button></div>
       <p id="msgCopiarLlave" class="msg" role="status"></p>
     </div>
+    <div id="cajaPublica" class="resultado" hidden>
+      <b>Datos públicos de la llave</b> (no son secretos: sirven solo para cifrar). Esto es lo que se pega en <code>js/llave-publica.js</code> de la página real:
+      <textarea id="textoPublica" readonly rows="3" aria-label="Datos públicos de la llave"></textarea>
+    </div>
     <p id="estadoLlave" class="estado"></p>
+    <h2 style="margin-top:22px">Hacer una copia de la llave para otra persona</h2>
+    <p>Cada persona que abre el panel (por ejemplo, director e inspector) puede tener <b>su propia copia con su propia clave</b>. Todas abren los mismos datos. Para hacerla hace falta la llave actual y su clave.</p>
+    <div class="campo"><label for="copiaTexto">Texto de la llave actual (pégalo aquí)</label><textarea id="copiaTexto" rows="3" spellcheck="false" autocomplete="off"></textarea></div>
+    <div class="campo"><label for="copiaClaveActual">Clave actual de esa llave</label>
+      <div class="con-ojo"><input id="copiaClaveActual" type="password" autocomplete="off"><button type="button" class="ojo" data-ojo="copiaClaveActual" aria-label="Mostrar clave" aria-pressed="false">👁</button></div></div>
+    <div class="campo"><label for="copiaNombre">Nombre de la persona (solo para el nombre del archivo)</label><input id="copiaNombre" maxlength="30" autocomplete="off"></div>
+    <div class="campo"><label for="copiaClave1">Clave nueva de esa persona</label>
+      <div class="con-ojo"><input id="copiaClave1" type="password" autocomplete="new-password"><button type="button" class="ojo" data-ojo="copiaClave1" aria-label="Mostrar clave" aria-pressed="false">👁</button></div></div>
+    <div class="campo"><label for="copiaClave2">Repite la clave nueva</label>
+      <div class="con-ojo"><input id="copiaClave2" type="password" autocomplete="new-password"><button type="button" class="ojo" data-ojo="copiaClave2" aria-label="Mostrar clave" aria-pressed="false">👁</button></div></div>
+    <p id="msgCopia" class="msg" role="status"></p>
+    <div class="acciones"><button id="btnCrearCopia" class="btn sec">Crear copia para esa persona</button>
+      <button id="btnDescargarCopia" class="btn sec" hidden>Descargar la copia</button></div>
+    <div id="cajaCopia" class="resultado" hidden><b>Texto de la copia</b> (cópialo si la descarga no funciona):
+      <textarea id="textoCopia" readonly rows="4" aria-label="Texto de la copia de la llave"></textarea></div>
     <ul class="avisos"><li>Guarda <b>al menos dos copias</b> del archivo en lugares distintos (por ejemplo, un pendrive bajo llave y un administrador de contraseñas).</li>
       <li>La clave se guarda aparte del archivo. Nunca en el mismo lugar.</li></ul>
   </section>

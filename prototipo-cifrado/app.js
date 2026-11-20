@@ -45,6 +45,7 @@
       guardar('proto_cfg', r.publica);
       archivoLlave = r.archivo;
       $('textoLlave').value = JSON.stringify(r.archivo); $('cajaTexto').hidden = false;
+      $('textoPublica').value = 'window.LLAVE_PUBLICA_COLEGIO = ' + JSON.stringify(r.publica) + ';'; $('cajaPublica').hidden = false;
       $('btnDescargarLlave').hidden = false;
       mensaje('msgLlave', v.debil ? 'Llave creada con una clave CORTA: solo sirve para probar.' : 'Llave creada. Descarga el archivo y guárdalo en dos lugares.', v.debil ? 'err' : 'ok');
       $('clave1').value = ''; $('clave2').value = '';
@@ -67,6 +68,26 @@
     a.href = url; a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   }
+
+  /* ---------- Copias de la llave para otras personas ---------- */
+  let archivoCopia = null, nombreCopia = 'persona';
+  $('btnCrearCopia').addEventListener('click', async () => {
+    const texto = $('copiaTexto').value.trim(), c1 = $('copiaClave1').value, c2 = $('copiaClave2').value;
+    if (!texto) return mensaje('msgCopia', 'Pega el texto de la llave actual.', 'err');
+    if (c1 !== c2) return mensaje('msgCopia', 'Las dos claves nuevas no coinciden.', 'err');
+    const v = C.validarClave(c1, { permitirDebil: $('debil').checked });
+    if (!v.ok) return mensaje('msgCopia', v.motivo, 'err');
+    $('btnCrearCopia').disabled = true; mensaje('msgCopia', 'Creando la copia…');
+    try {
+      archivoCopia = await C.copiarLlave(texto, $('copiaClaveActual').value, c1, { permitirDebil: $('debil').checked });
+      nombreCopia = ($('copiaNombre').value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')) || 'persona';
+      $('textoCopia').value = JSON.stringify(archivoCopia); $('cajaCopia').hidden = false; $('btnDescargarCopia').hidden = false;
+      $('copiaClave1').value = ''; $('copiaClave2').value = ''; $('copiaClaveActual').value = '';
+      mensaje('msgCopia', 'Copia creada. Descárgala (o copia su texto) y entrégala a esa persona junto con SU clave.', 'ok');
+    } catch (e) { mensaje('msgCopia', e.codigo === 'clave_incorrecta' ? 'La clave actual no es correcta.' : e.codigo === 'archivo_no_valido' ? 'El texto no es una llave del colegio válida.' : 'No se pudo crear la copia.', 'err'); }
+    $('btnCrearCopia').disabled = false;
+  });
+  $('btnDescargarCopia').addEventListener('click', () => { if (archivoCopia) descargar(new Blob([JSON.stringify(archivoCopia, null, 2)], { type: 'application/json' }), `llave-del-colegio-${nombreCopia}.json`); });
 
   /* ---------- 2 · Apoderado ---------- */
   const CAMPOS = ['nombre', 'rut', 'fnac', 'curso', 'pie', 'diag', 'salud', 'apo', 'aporut', 'cel', 'mail'];

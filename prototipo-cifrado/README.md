@@ -26,3 +26,9 @@
 - Convertir las matrículas ya guardadas, definir quién custodia la llave y en cuántas copias, y un procedimiento si se pierde.
 - Una vía para rotar la llave.
 - Revisión por el abogado/sostenedor.
+
+## Herramienta de llaves del colegio
+Este mismo archivo (`node herramientas/armar-prototipo-cifrado.js salida.html`) sirve para **crear la llave del colegio y las copias por persona**
+que usa el cifrado real de las matrículas (ver `docs/cifrado/`). En la pestaña 1: crear la llave, descargar el archivo, hacer una copia para cada persona
+con su propia clave y copiar los datos públicos (`window.LLAVE_PUBLICA_COLEGIO = …`) que se pegan en `js/llave-publica.js`.
+La llave privada **nunca** sale del computador donde se crea; úsalo de preferencia sin conexión.
