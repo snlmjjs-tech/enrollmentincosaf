@@ -13,6 +13,7 @@ h2{color:var(--azul2);font-size:1.15rem;margin:.2em 0 .5em}
 .panel.visible{display:block}
 .campo{margin:0 0 12px}
 label{display:block;font-size:.85rem;font-weight:600;margin-bottom:4px}
+textarea{width:100%;padding:10px 12px;border:1px solid var(--borde);border-radius:10px;font:inherit;font-size:.78rem;font-family:ui-monospace,Menlo,Consolas,monospace;background:#fff;margin-top:8px}
 input,select{width:100%;padding:10px 12px;border:1px solid var(--borde);border-radius:10px;font:inherit;background:#fff}
 input:focus,select:focus,button:focus-visible{outline:2px solid var(--azul);outline-offset:1px}
 .con-ojo{position:relative}.con-ojo input{padding-right:46px}

@@ -44,6 +44,7 @@
       const r = await C.crearLlaveColegio(c1, { permitirDebil: debil });
       guardar('proto_cfg', r.publica);
       archivoLlave = r.archivo;
+      $('textoLlave').value = JSON.stringify(r.archivo); $('cajaTexto').hidden = false;
       $('btnDescargarLlave').hidden = false;
       mensaje('msgLlave', v.debil ? 'Llave creada con una clave CORTA: solo sirve para probar.' : 'Llave creada. Descarga el archivo y guárdalo en dos lugares.', v.debil ? 'err' : 'ok');
       $('clave1').value = ''; $('clave2').value = '';
@@ -55,6 +56,12 @@
     if (!archivoLlave) return;
     descargar(new Blob([JSON.stringify(archivoLlave, null, 2)], { type: 'application/json' }), 'llave-del-colegio.json');
   });
+  /* Copiar al portapapeles; si el navegador no lo permite, se selecciona el texto para copiarlo a mano. */
+  async function copiar(texto, area, idMsg) {
+    try { await navigator.clipboard.writeText(texto); mensaje(idMsg, 'Copiado.', 'ok'); }
+    catch (e) { area.hidden = false; area.focus(); area.select(); mensaje(idMsg, 'Selecciona el texto y cópialo (mantén pulsado y elige «Copiar»).', 'err'); }
+  }
+  $('btnCopiarLlave').addEventListener('click', () => copiar($('textoLlave').value, $('textoLlave'), 'msgCopiarLlave'));
   function descargar(blob, nombre) {
     const url = URL.createObjectURL(blob), a = document.createElement('a');
     a.href = url; a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
@@ -121,25 +128,26 @@
   function bloquear() {
     llave = null; claros = []; clearTimeout(temporizador);
     $('tablaPanel').tBodies[0].replaceChildren(); $('buscaPanel').value = ''; mensaje('resPanel', '');
+    $('textoTabla').value = ''; $('textoTabla').hidden = true;
     $('abierto').hidden = true; $('bloqueado').hidden = false;
   }
   $('btnBloquear').addEventListener('click', bloquear);
 
   const MENSAJES = { archivo_no_valido: 'El archivo no es una llave del colegio válida.', clave_incorrecta: 'Clave incorrecta, o el archivo está dañado.', llave_distinta: 'Hay matrículas cifradas con otra llave; este archivo no las abre.' };
   $('btnAbrir').addEventListener('click', async () => {
-    const f = $('archivoLlave').files[0], clave = $('claveAbrir').value;
-    if (!f) return mensaje('msgAbrir', 'Elige el archivo de llave.', 'err');
-    if (f.size > 20000) return mensaje('msgAbrir', 'El archivo no es una llave del colegio válida.', 'err');
+    const f = $('archivoLlave').files[0], pegado = $('pegarLlave').value.trim(), clave = $('claveAbrir').value;
+    if (!f && !pegado) return mensaje('msgAbrir', 'Elige el archivo de llave o pega su texto.', 'err');
+    if ((f && f.size > 20000) || pegado.length > 20000) return mensaje('msgAbrir', 'El archivo no es una llave del colegio válida.', 'err');
     $('btnAbrir').disabled = true; mensaje('msgAbrir', 'Abriendo… (puede tardar un par de segundos)');
     try {
-      const abierta = await C.abrirLlave(await f.text(), clave);
+      const abierta = await C.abrirLlave(f ? await f.text() : pegado, clave);
       const filas = [];
       for (const r of leerBd()) {
         try { filas.push({ folio: r.folio, ficha: await C.descifrarFicha(r.cifrado, abierta, r.folio) }); }
         catch (e) { filas.push({ folio: r.folio, ficha: null, error: MENSAJES[e.codigo] || 'No se pudo abrir esta matrícula.' }); }
       }
       llave = abierta; claros = filas;
-      $('claveAbrir').value = ''; $('archivoLlave').value = ''; mensaje('msgAbrir', '');
+      $('claveAbrir').value = ''; $('archivoLlave').value = ''; $('pegarLlave').value = ''; mensaje('msgAbrir', '');
       $('bloqueado').hidden = true; $('abierto').hidden = false;
       pintarPanel(); reiniciarBloqueo();
     } catch (e) { mensaje('msgAbrir', MENSAJES[e.codigo] || 'No se pudo abrir.', 'err'); }
@@ -168,6 +176,15 @@
   }
   $('buscaPanel').addEventListener('input', pintarPanel);
 
+  $('btnCopiarTabla').addEventListener('click', () => {
+    if (!llave) return;
+    const filas = visibles().map(filaPlana);
+    if (!filas.length) return mensaje('resPanel', 'No hay filas para copiar.', 'err');
+    const cols = Object.keys(filas[0]), limpia = v => String(v == null ? '' : v).replace(/[\t\r\n]+/g, ' ');
+    const tsv = [cols.join('\t')].concat(filas.map(f => cols.map(c => limpia(f[c])).join('\t'))).join('\n');
+    $('textoTabla').value = tsv;
+    copiar(tsv, $('textoTabla'), 'resPanel');
+  });
   $('btnExcel').addEventListener('click', () => {
     if (!llave) return;
     const filas = visibles().map(filaPlana);

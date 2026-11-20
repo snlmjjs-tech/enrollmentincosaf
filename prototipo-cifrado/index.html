@@ -34,6 +34,12 @@
     <p id="msgLlave" class="msg" role="status"></p>
     <div class="acciones"><button id="btnCrearLlave" class="btn">Crear llave del colegio</button>
       <button id="btnDescargarLlave" class="btn sec" hidden>Descargar archivo de llave</button></div>
+    <div id="cajaTexto" class="resultado" hidden>
+      <b>¿No se descarga el archivo?</b> (pasa en el iPad o dentro de otra aplicación). Copia este texto y guárdalo en un lugar seguro (por ejemplo, en Notas). Sirve igual que el archivo.
+      <textarea id="textoLlave" readonly rows="4" aria-label="Texto de la llave del colegio"></textarea>
+      <div class="acciones"><button type="button" id="btnCopiarLlave" class="btn sec">Copiar texto de la llave</button></div>
+      <p id="msgCopiarLlave" class="msg" role="status"></p>
+    </div>
     <p id="estadoLlave" class="estado"></p>
     <ul class="avisos"><li>Guarda <b>al menos dos copias</b> del archivo en lugares distintos (por ejemplo, un pendrive bajo llave y un administrador de contraseñas).</li>
       <li>La clave se guarda aparte del archivo. Nunca en el mismo lugar.</li></ul>
@@ -85,6 +91,7 @@
     <div id="bloqueado">
       <p>El panel está <b>bloqueado</b>: no se ve ningún dato. Para abrirlo hace falta el <b>archivo de llave</b> y su <b>clave</b>.</p>
       <div class="campo"><label for="archivoLlave">Archivo de llave del colegio</label><input id="archivoLlave" type="file" accept=".json,application/json"></div>
+      <div class="campo"><label for="pegarLlave">…o pega aquí el texto de la llave (si no puedes elegir el archivo)</label><textarea id="pegarLlave" rows="3" autocomplete="off" spellcheck="false"></textarea></div>
       <div class="campo"><label for="claveAbrir">Clave</label>
         <div class="con-ojo"><input id="claveAbrir" type="password" autocomplete="off"><button type="button" class="ojo" data-ojo="claveAbrir" aria-label="Mostrar clave" aria-pressed="false">👁</button></div></div>
       <p id="msgAbrir" class="msg" role="status"></p>
@@ -98,7 +105,9 @@
       <div class="campo"><label for="buscaPanel">Buscar (nombre, RUT, curso, apoderado…)</label><input id="buscaPanel" autocomplete="off"></div>
       <p id="resPanel" class="msg" role="status"></p>
       <div class="tabla-caja"><table id="tablaPanel"><thead><tr><th>Folio</th><th>Estudiante</th><th>RUT</th><th>Curso</th><th>PIE</th><th>Apoderado</th><th>Celular</th><th>Correo</th></tr></thead><tbody></tbody></table></div>
-      <div class="acciones"><button id="btnExcel" class="btn">Descargar Excel</button></div>
+      <div class="acciones"><button id="btnExcel" class="btn">Descargar Excel</button>
+        <button id="btnCopiarTabla" class="btn sec">Copiar tabla (para pegar en Excel o Numbers)</button></div>
+      <textarea id="textoTabla" readonly rows="5" aria-label="Tabla para copiar" hidden></textarea>
       <p class="aviso-datos">El Excel descargado <b>no está cifrado</b>: ponle contraseña y guárdalo en un lugar protegido. También sirve como respaldo legible.</p>
     </div>
   </section>

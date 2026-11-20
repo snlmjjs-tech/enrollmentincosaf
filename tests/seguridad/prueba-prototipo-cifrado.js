@@ -91,6 +91,7 @@ const voltea = b64 => { const b = Buffer.from(b64, 'base64'); b[Math.floor(b.len
   const rutaLlave = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'proto-')), 'llave-del-colegio.json'); await dl.saveAs(rutaLlave);
   const archivoDesc = JSON.parse(fs.readFileSync(rutaLlave, 'utf8'));
   ok('se descarga el archivo de llave con su protección', dl.suggestedFilename() === 'llave-del-colegio.json' && archivoDesc.privada.iteraciones >= 600000);
+  ok('además del archivo, la pantalla muestra el TEXTO de la llave para copiarlo (por si la descarga no funciona, como en el iPad)', await pg.isVisible('#textoLlave') && JSON.stringify(JSON.parse(await pg.inputValue('#textoLlave'))) === JSON.stringify(archivoDesc));
   ok('en el navegador solo queda la llave PÚBLICA: ni la clave ni la llave privada se guardan', await pg.evaluate(() => { const t = JSON.stringify(Object.assign({}, localStorage)); return !t.includes('privada') && !t.includes('pato-lluvia'); }));
 
   await tab('apoderado');
@@ -124,8 +125,24 @@ const voltea = b64 => { const b = Buffer.from(b64, 'base64'); b[Math.floor(b.len
   const rutaX = path.join(path.dirname(rutaLlave), 'matriculas.xlsx'); await dx.saveAs(rutaX);
   const filasX = XLSX.utils.sheet_to_json(XLSX.readFile(rutaX).Sheets['Matrículas']);
   ok('el Excel sale legible con las 3 matrículas y sus datos completos', filasX.length === 3 && filasX[1].Estudiante === 'Estudiante de Prueba 2' && filasX[1].RUT === '11.111.111-1' && filasX[1].Correo === 'apoderado@example.invalid' && filasX[1]['Diagnóstico PIE'] === 'Diagnóstico ficticio de prueba');
+  await pg.click('#btnCopiarTabla');
+  const tsv = await pg.inputValue('#textoTabla');
+  ok('«Copiar tabla» arma el texto con columnas para pegar en Excel o Numbers (sin necesitar descargas)', tsv.startsWith('Folio\tEstudiante\tRUT') && tsv.includes('Estudiante de Prueba 2') && tsv.split('\n').length === 4);
   await pg.click('#btnBloquear');
   ok('al bloquear desaparecen los datos de la pantalla', await pg.isVisible('#bloqueado') && (await pg.locator('#tablaPanel tbody tr').count()) === 0 && (await texto2()).indexOf('Estudiante de Prueba 2') === -1);
+
+  // Desbloqueo pegando el TEXTO de la llave (sin archivo)
+  const textoLlave = fs.readFileSync(rutaLlave, 'utf8');
+  await pg.fill('#pegarLlave', textoLlave); await pg.fill('#claveAbrir', FUERTE + 'mal'); await pg.click('#btnAbrir');
+  await pg.waitForFunction(() => /incorrecta/.test(document.getElementById('msgAbrir').textContent));
+  ok('pegando el texto con una clave equivocada NO abre', await pg.isHidden('#abierto'));
+  await pg.fill('#pegarLlave', 'esto no es una llave'); await pg.fill('#claveAbrir', FUERTE); await pg.click('#btnAbrir');
+  await pg.waitForFunction(() => /no es una llave/.test(document.getElementById('msgAbrir').textContent));
+  ok('pegar un texto que no es la llave se rechaza con un mensaje claro', await pg.isHidden('#abierto'));
+  await pg.fill('#pegarLlave', textoLlave); await pg.fill('#claveAbrir', FUERTE); await pg.click('#btnAbrir'); await pg.waitForSelector('#abierto:not([hidden])');
+  ok('pegando el texto de la llave y su clave se desbloquea (3 matrículas) y el texto pegado se borra', (await pg.locator('#tablaPanel tbody tr').count()) === 3 && (await pg.inputValue('#pegarLlave')) === '');
+  await pg.click('#btnBloquear');
+  ok('al bloquear se borra también la tabla copiada', (await pg.inputValue('#textoTabla')) === '' && await pg.isHidden('#textoTabla'));
 
   // Manipulaciones en la base (alguien con acceso al servidor que intenta cambiar o mezclar filas)
   await pg.evaluate(() => {
