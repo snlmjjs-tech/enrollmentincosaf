@@ -13,7 +13,7 @@ const sinCierre = t => t.replace(/<\/(script|style)/gi, '<\\/$1');
 let html = leer(path.join(P, 'index.html'));
 const css = sinCierre(leer(path.join(P, 'estilo.css')));
 const scripts = [['<script src="../vendor/xlsx-0.18.5.full.min.js"></script>', path.join(RAIZ, 'vendor/xlsx-0.18.5.full.min.js')],
-                 ['<script src="cifrado.js"></script>', path.join(P, 'cifrado.js')], ['<script src="app.js"></script>', path.join(P, 'app.js')]];
+                 ['<script src="../js/cifrado.js"></script>', path.join(RAIZ, 'js/cifrado.js')], ['<script src="app.js"></script>', path.join(P, 'app.js')]];
 const hashesJs = [];
 for (const [etiqueta, archivo] of scripts) {
   if (!html.includes(etiqueta)) throw new Error('No encuentro ' + etiqueta);

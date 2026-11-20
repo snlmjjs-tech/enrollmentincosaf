@@ -6,7 +6,7 @@ const fs = require('fs'), os = require('os'), path = require('path'), http = req
 const RAIZ = path.resolve(__dirname, '../..');
 let chromium; try { ({ chromium } = require('playwright')); } catch (e) { ({ chromium } = require('/opt/node22/lib/node_modules/playwright')); }
 const XLSX = require('xlsx');
-const C = require(path.join(RAIZ, 'prototipo-cifrado/cifrado.js'));
+const C = require(path.join(RAIZ, 'js/cifrado.js'));
 
 let buenas = 0, malas = 0;
 const ok = (nombre, cond, detalle) => { if (cond) { buenas++; console.log('  ✔ ' + nombre); } else { malas++; console.log('  ✘ ' + nombre + (detalle ? '  → ' + detalle : '')); } };
@@ -36,30 +36,38 @@ const voltea = b64 => { const b = Buffer.from(b64, 'base64'); b[Math.floor(b.len
   ok('con la clave vacía NO se abre', (await falla(() => C.abrirLlave(archivo, ''))) === 'clave_incorrecta');
   ok('la llave privada abierta NO se puede exportar (no extraíble)', llave.privada.extractable === false && (await falla(() => crypto.subtle.exportKey('pkcs8', llave.privada))) !== null);
 
-  const p1 = await C.cifrarFicha(ficha(1), publica, 7);
-  ok('lo cifrado se abre y es idéntico a la ficha original (con tildes, ñ y emoji)', JSON.stringify(await C.descifrarFicha(p1, llave, 7)) === JSON.stringify(ficha(1)));
+  const p1 = await C.cifrarFicha(ficha(1), publica, 'folio:7');
+  ok('lo cifrado se abre y es idéntico a la ficha original (con tildes, ñ y emoji)', JSON.stringify(await C.descifrarFicha(p1, llave, 'folio:7')) === JSON.stringify(ficha(1)));
   const texto = JSON.stringify(p1) + Buffer.from(p1.ct, 'base64').toString('latin1') + Buffer.from(p1.ct, 'base64').toString('utf8');
   ok('lo guardado no contiene ningún dato legible (nombre, RUT, correo, diagnóstico)', ['Ñandú', 'Pérez', '11.111.111', 'example.invalid', 'Diagnóstico', 'Apoderado'].every(x => !texto.includes(x)));
-  const p2 = await C.cifrarFicha(ficha(1), publica, 7);
+  const p2 = await C.cifrarFicha(ficha(1), publica, 'folio:7');
   ok('la misma ficha cifrada dos veces da resultados distintos (no se pueden comparar)', p1.ct !== p2.ct && p1.iv !== p2.iv && p1.ck !== p2.ck);
-  ok('una ficha cifrada para el folio 7 NO abre si se presenta como folio 8 (atada a su folio)', (await falla(() => C.descifrarFicha(p1, llave, 8))) === 'no_se_puede_abrir');
-  ok('cambiar un solo dato del texto cifrado hace que no abra', (await falla(() => C.descifrarFicha({ ...p1, ct: voltea(p1.ct) }, llave, 7))) === 'no_se_puede_abrir');
-  ok('cambiar el vector inicial hace que no abra', (await falla(() => C.descifrarFicha({ ...p1, iv: voltea(p1.iv) }, llave, 7))) === 'no_se_puede_abrir');
-  ok('cambiar la llave envuelta hace que no abra', (await falla(() => C.descifrarFicha({ ...p1, ck: voltea(p1.ck) }, llave, 7))) === 'no_se_puede_abrir');
-  ok('un paquete con otro algoritmo o versión no abre', (await falla(() => C.descifrarFicha({ ...p1, alg: 'otro' }, llave, 7))) === 'no_se_puede_abrir' && (await falla(() => C.descifrarFicha({ ...p1, v: 2 }, llave, 7))) === 'no_se_puede_abrir');
+  ok('una ficha cifrada para el folio 7 NO abre si se presenta como folio 8 (atada a su folio)', (await falla(() => C.descifrarFicha(p1, llave, 'folio:8'))) === 'no_se_puede_abrir');
+  ok('cambiar un solo dato del texto cifrado hace que no abra', (await falla(() => C.descifrarFicha({ ...p1, ct: voltea(p1.ct) }, llave, 'folio:7'))) === 'no_se_puede_abrir');
+  ok('cambiar el vector inicial hace que no abra', (await falla(() => C.descifrarFicha({ ...p1, iv: voltea(p1.iv) }, llave, 'folio:7'))) === 'no_se_puede_abrir');
+  ok('cambiar la llave envuelta hace que no abra', (await falla(() => C.descifrarFicha({ ...p1, ck: voltea(p1.ck) }, llave, 'folio:7'))) === 'no_se_puede_abrir');
+  ok('un paquete con otro algoritmo o versión no abre', (await falla(() => C.descifrarFicha({ ...p1, alg: 'otro' }, llave, 'folio:7'))) === 'no_se_puede_abrir' && (await falla(() => C.descifrarFicha({ ...p1, v: 2 }, llave, 'folio:7'))) === 'no_se_puede_abrir');
   const otro = await C.crearLlaveColegio('otra-clave-larga-distinta-91');
   const lOtro = await C.abrirLlave(otro.archivo, 'otra-clave-larga-distinta-91');
-  ok('con la llave de OTRO colegio no se abre: «llave_distinta»', (await falla(() => C.descifrarFicha(p1, lOtro, 7))) === 'llave_distinta');
-  ok('un paquete con la huella cambiada se rechaza', (await falla(() => C.descifrarFicha({ ...p1, kid: otro.publica.kid }, llave, 7))) !== null);
-  ok('con una llave pública alterada no se cifra («llave_publica_no_valida»)', (await falla(() => C.cifrarFicha(ficha(), { kid: publica.kid, publica: otro.publica.publica }, 1))) === 'llave_publica_no_valida');
+  ok('con la llave de OTRO colegio no se abre: «llave_distinta»', (await falla(() => C.descifrarFicha(p1, lOtro, 'folio:7'))) === 'llave_distinta');
+  ok('un paquete con la huella cambiada se rechaza', (await falla(() => C.descifrarFicha({ ...p1, kid: otro.publica.kid }, llave, 'folio:7'))) !== null);
+  ok('con una llave pública alterada no se cifra («llave_publica_no_valida»)', (await falla(() => C.cifrarFicha(ficha(), { kid: publica.kid, publica: otro.publica.publica }, 'folio:1'))) === 'llave_publica_no_valida');
   const pubKey = await crypto.subtle.importKey('spki', Buffer.from(publica.publica, 'base64'), { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['encrypt']);
   ok('la llave PÚBLICA sola no puede descifrar nada', (await falla(() => crypto.subtle.decrypt({ name: 'RSA-OAEP' }, pubKey, Buffer.from(p1.ck, 'base64')))) !== null);
   ok('archivo con otra huella (dato autenticado) no abre', (await falla(() => C.abrirLlave({ ...archivo, kid: otro.publica.kid }, FUERTE))) === 'clave_incorrecta');
   ok('archivo con 1 vuelta de PBKDF2 se rechaza (no se aceptan archivos con protección débil)', (await falla(() => C.abrirLlave({ ...archivo, privada: { ...archivo.privada, iteraciones: 1 } }, FUERTE))) === 'archivo_no_valido');
   ok('archivo con miles de millones de vueltas se rechaza (no cuelga el navegador)', (await falla(() => C.abrirLlave({ ...archivo, privada: { ...archivo.privada, iteraciones: 5e10 } }, FUERTE))) === 'archivo_no_valido');
   ok('texto que no es JSON, o JSON de otra cosa, se rechaza', (await falla(() => C.abrirLlave('no soy json', FUERTE))) === 'archivo_no_valido' && (await falla(() => C.abrirLlave({ tipo: 'otro' }, FUERTE))) === 'archivo_no_valido' && (await falla(() => C.abrirLlave(null, FUERTE))) === 'archivo_no_valido');
-  const t0 = Date.now(); const muchas = []; for (let i = 0; i < 40; i++) muchas.push(await C.cifrarFicha(ficha(i), publica, i + 1));
-  for (let i = 0; i < 40; i++) await C.descifrarFicha(muchas[i], llave, i + 1);
+  const CLAVE_B = 'segunda-clave-persona-dos-58';
+  const copia = await C.copiarLlave(archivo, FUERTE, CLAVE_B);
+  const lCopia = await C.abrirLlave(copia, CLAVE_B);
+  ok('la copia para otra persona tiene su propia clave y abre los MISMOS datos', copia.kid === archivo.kid && JSON.stringify(await C.descifrarFicha(p1, lCopia, 'folio:7')) === JSON.stringify(ficha(1)));
+  ok('la copia NO se abre con la clave de la primera persona (ni la primera con la de la segunda)', (await falla(() => C.abrirLlave(copia, FUERTE))) === 'clave_incorrecta' && (await falla(() => C.abrirLlave(archivo, CLAVE_B))) === 'clave_incorrecta');
+  ok('la copia usa sal y vector nuevos (no repite los del original)', copia.privada.sal !== archivo.privada.sal && copia.privada.iv !== archivo.privada.iv && copia.privada.datos !== archivo.privada.datos);
+  ok('para hacer una copia hace falta la clave actual y una clave nueva válida', (await falla(() => C.copiarLlave(archivo, 'mal', CLAVE_B))) === 'clave_incorrecta' && (await falla(() => C.copiarLlave(archivo, FUERTE, '2179'))) !== null);
+  ok('esCifrado reconoce una ficha cifrada y rechaza una ficha normal', C.esCifrado(p1) && !C.esCifrado(ficha(1)) && !C.esCifrado(null) && !C.esCifrado({ ct: 'x' }));
+  const t0 = Date.now(); const muchas = []; for (let i = 0; i < 40; i++) muchas.push(await C.cifrarFicha(ficha(i), publica, 'folio:' + (i + 1)));
+  for (let i = 0; i < 40; i++) await C.descifrarFicha(muchas[i], llave, 'folio:' + (i + 1));
   ok(`40 fichas se cifran y descifran en un tiempo razonable (${Date.now() - t0} ms)`, Date.now() - t0 < 20000);
 
   sec('2) Pantalla del prototipo (Chromium, sin red)');

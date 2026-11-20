@@ -1,10 +1,12 @@
-/* PROTOTIPO (datos ficticios): cifrado de una ficha de matrícula con una llave pública y una privada.
+/* Cifrado de las fichas de matrícula con una llave pública y una privada (la usan la página y el prototipo).
  *
  *  · La llave PÚBLICA va en la página: solo sirve para cerrar (cifrar). Cualquiera puede verla sin riesgo.
  *  · La llave PRIVADA solo la tiene el colegio, dentro de un archivo protegido con una clave. Sirve para abrir.
  *  · Cada ficha se cifra con una llave AES-256 nueva (AES-GCM); esa llave se «envuelve» con la llave pública (RSA-OAEP 3072).
- *  · La ficha queda atada a su folio (dato autenticado): copiar el cifrado de una fila a otra hace que no abra.
+ *  · La ficha queda atada a su «contexto» (por ejemplo, el identificador de su matrícula): copiar el cifrado de una fila a otra, o cambiar
+ *    el folio, no afecta; pero presentar el cifrado con otro contexto hace que no abra.
  *  · Lo único que ve un extraño en la base de datos es: folio, fecha y texto ilegible.
+ *  · La clave de la llave del colegio se puede copiar para varias personas (cada una con su propia clave): ver copiarLlave().
  *
  * Usa solo la API estándar del navegador (WebCrypto); no carga nada de internet. Sirve también en Node 20+ para las pruebas.
  */
@@ -93,14 +95,14 @@
     } catch (e) { throw falla('archivo_no_valido'); }
   }
 
-  /* Cifra una ficha con la llave pública. «folio» queda atado al cifrado. */
-  async function cifrarFicha(ficha, publica, folio) {
+  /* Cifra una ficha con la llave pública. «contexto» (texto) queda atado al cifrado. */
+  async function cifrarFicha(ficha, publica, contexto) {
     const spki = deB64(publica.publica);
     if (await huella(spki) !== publica.kid) throw falla('llave_publica_no_valida');
     const pub = await subtle.importKey('spki', spki, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['encrypt']);
     const kAes = await subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt']);
     const iv = azar(12);
-    const ct = await subtle.encrypt({ name: 'AES-GCM', iv, additionalData: enc.encode(`folio:${folio}|kid:${publica.kid}`) }, kAes, enc.encode(JSON.stringify(ficha)));
+    const ct = await subtle.encrypt({ name: 'AES-GCM', iv, additionalData: enc.encode(`ctx:${contexto}|kid:${publica.kid}`) }, kAes, enc.encode(JSON.stringify(ficha)));
     const crudo = await subtle.exportKey('raw', kAes);
     const envuelta = await subtle.encrypt({ name: 'RSA-OAEP' }, pub, crudo);
     new Uint8Array(crudo).fill(0);
@@ -108,19 +110,44 @@
   }
 
   /* Descifra una ficha con la llave del colegio ya abierta. Cualquier cambio o error: «no_se_puede_abrir». */
-  async function descifrarFicha(paquete, llave, folio) {
+  async function descifrarFicha(paquete, llave, contexto) {
     if (!paquete || paquete.v !== 1 || paquete.alg !== ALGORITMO) throw falla('no_se_puede_abrir');
     if (paquete.kid !== llave.kid) throw falla('llave_distinta');
     try {
       const crudo = await subtle.decrypt({ name: 'RSA-OAEP' }, llave.privada, deB64(paquete.ck));
       const kAes = await subtle.importKey('raw', crudo, 'AES-GCM', false, ['decrypt']);
       new Uint8Array(crudo).fill(0);
-      const pt = await subtle.decrypt({ name: 'AES-GCM', iv: deB64(paquete.iv), additionalData: enc.encode(`folio:${folio}|kid:${paquete.kid}`) }, kAes, deB64(paquete.ct));
+      const pt = await subtle.decrypt({ name: 'AES-GCM', iv: deB64(paquete.iv), additionalData: enc.encode(`ctx:${contexto}|kid:${paquete.kid}`) }, kAes, deB64(paquete.ct));
       return JSON.parse(dec.decode(pt));
     } catch (e) { throw falla('no_se_puede_abrir'); }
   }
 
-  const API = { ITERACIONES, MIN_CLAVE, ALGORITMO, validarClave, crearLlaveColegio, abrirLlave, cifrarFicha, descifrarFicha };
+  /* Hace una copia del archivo de llave para otra persona, protegida con SU clave (abre los mismos datos). Hace falta la clave actual. */
+  async function copiarLlave(archivo, claveActual, claveNueva, opciones) {
+    const v = validarClave(claveNueva, opciones);
+    if (!v.ok) throw falla('clave_no_valida:' + v.motivo);
+    let a = archivo;
+    if (typeof a === 'string') { try { a = JSON.parse(a); } catch (e) { throw falla('archivo_no_valido'); } }
+    if (!a || a.tipo !== 'llave-del-colegio' || a.v !== 1 || !a.privada) throw falla('archivo_no_valido');
+    const p = a.privada;
+    if (p.kdf !== 'PBKDF2-SHA256' || !Number.isInteger(p.iteraciones) || p.iteraciones < ITER_MIN || p.iteraciones > ITER_MAX) throw falla('archivo_no_valido');
+    let pkcs8;
+    try {
+      const k = await llaveDeClave(String(claveActual || ''), deB64(p.sal), p.iteraciones);
+      pkcs8 = await subtle.decrypt({ name: 'AES-GCM', iv: deB64(p.iv), additionalData: enc.encode('llave-privada|' + a.kid) }, k, deB64(p.datos));
+    } catch (e) { throw falla('clave_incorrecta'); }
+    const sal = azar(16), iv = azar(12);
+    const k2 = await llaveDeClave(claveNueva, sal, ITERACIONES);
+    const cifrada = await subtle.encrypt({ name: 'AES-GCM', iv, additionalData: enc.encode('llave-privada|' + a.kid) }, k2, pkcs8);
+    new Uint8Array(pkcs8).fill(0);
+    return { tipo: 'llave-del-colegio', v: 1, kid: a.kid, publica: a.publica,
+             privada: { kdf: 'PBKDF2-SHA256', iteraciones: ITERACIONES, sal: aB64(sal), iv: aB64(iv), datos: aB64(cifrada) } };
+  }
+
+  /* ¿Este valor es una ficha cifrada con este módulo? (las matrículas antiguas, sin cifrar, no lo son) */
+  const esCifrado = x => !!x && typeof x === 'object' && x.v === 1 && x.alg === ALGORITMO && typeof x.ct === 'string' && typeof x.ck === 'string';
+
+  const API = { ITERACIONES, MIN_CLAVE, ALGORITMO, validarClave, crearLlaveColegio, abrirLlave, copiarLlave, cifrarFicha, descifrarFicha, esCifrado };
   raiz.Cifrado = API;
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
 })(typeof globalThis !== 'undefined' ? globalThis : self);

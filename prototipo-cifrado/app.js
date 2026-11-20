@@ -88,7 +88,7 @@
       apoderado: { nombre: v.apo, rut: v.aporut, celular: v.cel, correo: v.mail }
     };
     try {
-      const paquete = await C.cifrarFicha(ficha, cfg, folio);
+      const paquete = await C.cifrarFicha(ficha, cfg, 'folio:' + folio);
       bd.push({ folio, creada: new Date().toISOString(), cifrado: paquete });
       guardar('proto_bd', bd);
       CAMPOS.forEach(c => { $('f_' + c).value = c === 'pie' ? 'no' : ''; });
@@ -143,7 +143,7 @@
       const abierta = await C.abrirLlave(f ? await f.text() : pegado, clave);
       const filas = [];
       for (const r of leerBd()) {
-        try { filas.push({ folio: r.folio, ficha: await C.descifrarFicha(r.cifrado, abierta, r.folio) }); }
+        try { filas.push({ folio: r.folio, ficha: await C.descifrarFicha(r.cifrado, abierta, 'folio:' + r.folio) }); }
         catch (e) { filas.push({ folio: r.folio, ficha: null, error: MENSAJES[e.codigo] || 'No se pudo abrir esta matrícula.' }); }
       }
       llave = abierta; claros = filas;
