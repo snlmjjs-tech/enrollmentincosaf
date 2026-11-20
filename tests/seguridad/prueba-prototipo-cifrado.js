@@ -166,7 +166,7 @@ const voltea = b64 => { const b = Buffer.from(b64, 'base64'); b[Math.floor(b.len
   await pg.click('#btnBloquear');
 
   ok('la página no hizo ninguna petición a internet', externas.length === 0, externas.join(' '));
-  ok('la política de seguridad impide enviar datos fuera (fetch a otro sitio falla)', await pg.evaluate(() => fetch('https://example.com/x').then(() => false, () => true)));
+  ok('la política de seguridad de la página impide enviar datos a cualquier sitio (connect-src \'none\') y solo permite su propio código', await pg.evaluate(() => { const c = document.querySelector('meta[http-equiv="Content-Security-Policy"]').content; return /connect-src 'none'/.test(c) && /default-src 'none'/.test(c) && !/unsafe-inline|unsafe-eval|https?:/.test(c); }));
   ok('sin errores de JavaScript', errores.length === 0, errores.join(' | '));
 
   // Bloqueo automático tras 10 minutos sin usar el panel (reloj simulado)

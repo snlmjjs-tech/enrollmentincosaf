@@ -69,7 +69,7 @@ const PARENTESCOS = ["Madre", "Padre", "Abuelo(a)", "Hermano(a)", "Tío(a)", "Tu
 
 // Mensajes del servidor que sí se muestran tal cual (están escritos para el usuario). Cualquier otro
 // error de la base se registra en la consola y al usuario se le muestra un mensaje general.
-const MENSAJES_SERVIDOR = /(folio_invalido|folio_en_uso|folio_duplicado|dato_invalido|demasiados_intentos|demasiadas_solicitudes|solicitud_invalida): (.*)/s;
+const MENSAJES_SERVIDOR = /(folio_invalido|folio_en_uso|folio_duplicado|dato_invalido|demasiados_intentos|demasiadas_solicitudes|solicitud_invalida|cifrado_obligatorio|matricula_no_encontrada): (.*)/s;
 
 // Llama a una función de la base (ver supabase/schema.sql) y lanza un Error legible si falla
 async function rpc(nombre, args){
@@ -117,6 +117,10 @@ let registrosVisibles = [];
 let claveEliminarPendiente = null;
 let editandoKey = null;
 let editandoOriginal = null;
+let editandoCifrada = false;       // la matrícula en edición está (o se guardará) cifrada
+let filasCrudas = [];              // lo que devolvió el servidor al listar (para el respaldo cifrado y la conversión)
+let llaveColegio = null;           // llave privada del colegio YA ABIERTA (solo en memoria, no exportable)
+let temporizadorLlave = null;      // bloqueo automático por inactividad
 
 /* ---------- Nómina de alumnos 2026 (autocompletar comuna de estudiantes antiguos) ---------- */
 let nomina2026 = null;
@@ -172,6 +176,7 @@ if (MODO_APODERADO){
 
 /* ---------- Navegación ---------- */
 function mostrar(id){
+  if (id === "scr-home" || id === "scr-acceso") bloquearLlave(true);          // al salir del panel se vuelve a bloquear
   document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
   document.getElementById(id).classList.add("active");
   window.scrollTo({top:0});
@@ -191,6 +196,7 @@ function iniciarFicha(tipo){
   codigoPreCargado = null;
   editandoKey = null;
   editandoOriginal = null;
+  editandoCifrada = false;
   solicitudActual = null; solicitudGuardada = null; solicitudPendiente = null;
   quitarEstudiantesExtra();
   document.getElementById("ficha").reset();
@@ -611,7 +617,14 @@ document.getElementById("ficha").addEventListener("submit", async e=>{
     const datos = recolectarDatos();
     boton.disabled = true; boton.textContent = "Guardando…";
     try{
-      await rpc("actualizar_matricula", { p_clave: tokenAdmin, p_id: editandoKey, p_ficha: { ...editandoOriginal, ...datos } });
+      const ficha = { ...editandoOriginal, ...datos };
+      if (editandoCifrada || cifradoActivo()){
+        // matrícula cifrada (o que pasa a estarlo): se vuelve a cifrar con la llave pública; la base no ve el contenido
+        const cifrado = await Cifrado.cifrarFicha(ficha, window.LLAVE_PUBLICA_COLEGIO, "matricula:" + editandoKey);
+        await rpc("actualizar_matricula_cifrada", { p_clave: tokenAdmin, p_id: editandoKey, p_tipo: ficha.tipo, p_fecha: ficha.fechaRegistro, p_cifrado: cifrado });
+      } else {
+        await rpc("actualizar_matricula", { p_clave: tokenAdmin, p_id: editandoKey, p_ficha: ficha });
+      }
       aviso("Cambios guardados", "Se actualizaron los datos de la matrícula.");
       editandoKey = null;
       editandoOriginal = null;
@@ -810,6 +823,7 @@ function editarMatricula(key){
     "Se cargaron los datos de esta matrícula para editar. Corrige lo necesario y presiona «Guardar cambios»."
   );
   editandoKey = key;
+  editandoCifrada = !!r._cifrada;
   editandoOriginal = { folio: r.folio, fechaRegistro: r.fechaRegistro };
   actualizarEtiquetas();
 }
@@ -863,7 +877,7 @@ const CONSENTIMIENTO_PUNTOS = [
   { t:"Responsable y finalidad.", d:`Los datos serán tratados por el ${NOMBRE_COLEGIO} únicamente para gestionar el proceso de matrícula 2027, cumplir sus fines educativos y las obligaciones que la normativa educacional le impone.` },
   { t:"Veracidad.", d:"Declaro que los datos entregados son verídicos y me comprometo a informar cualquier cambio." },
   { t:"Uso interno y comunicación.", d:"Los datos son de uso interno del establecimiento y solo los conoce el personal autorizado. No se entregarán a terceros, salvo a organismos públicos cuando la ley lo exija (por ejemplo, el Ministerio de Educación) y a los proveedores tecnológicos que alojan el sistema y envían el correo, bajo medidas de seguridad." },
-  { t:"Seguridad y conservación.", d:"Los datos se resguardan con medidas de seguridad técnicas y organizativas y se conservarán mientras el estudiante esté matriculado y durante los plazos que exija la normativa." },
+  { t:"Seguridad y conservación.", d:"Los datos se resguardan con medidas de seguridad técnicas y organizativas" + (cifradoActivo() ? " (las matrículas se guardan cifradas)" : "") + " y se conservarán mientras el estudiante esté matriculado y durante los plazos que exija la normativa." },
   { t:"Mis derechos.", d:`Puedo solicitar acceso, rectificación, supresión u oposición al tratamiento de los datos, en los casos que la ley lo permite, escribiendo a ${CONTACTO_COLEGIO.correo} o en ${CONTACTO_COLEGIO.direccion}.` }
 ];
 const TEXTO_SENSIBLES = "Datos de salud y apoyo educativo. Autorizo expresamente el tratamiento de los datos de salud y/o diagnóstico del estudiante informados en la ficha, con la única finalidad de brindar apoyo educativo y resguardar su bienestar.";
@@ -1135,7 +1149,7 @@ const ERRORES_CORREO = {
 
 // Genera un certificado PDF por estudiante y envía UN solo correo con todos. Las matrículas ya están guardadas:
 // si algo falla aquí NO se pierde nada y se puede reintentar sin duplicar (la solicitud lleva su identificador).
-async function enviarCorreoSolicitud(solicitudId, fichas, token){
+async function enviarCorreoSolicitud(solicitudId, fichas, token, cifrada){
   const correo = fichas[0].apoderado.correo;
   const n = fichas.length;
   if (!correo) return { estado: "sin_correo", msg: "El apoderado no registró correo, por lo que no se envió comprobante por email." };
@@ -1152,6 +1166,15 @@ async function enviarCorreoSolicitud(solicitudId, fichas, token){
   const total = certificados.reduce((a, c) => a + c.pdfBase64.length, 0);
   if (certificados.some(c => c.pdfBase64.length > MAX_PDF_BASE64) || total > MAX_TOTAL_BASE64){
     return { estado: "tamano", msg: "Las matrículas se guardaron, pero los certificados superan el tamaño permitido para un correo. No se envió ninguno. Avisa a la administración." };
+  }
+  // 2b) matrículas cifradas: la base no puede leerlas, así que se le deja el paquete TEMPORAL con los datos del correo (se borra al enviarse)
+  if (cifrada){
+    try{
+      const p = await rpc("preparar_correo", { p_clave: token, p_solicitud: solicitudId, p_paquete: paqueteCorreo(fichas) });
+      if (p && p.ya_enviado) return { estado: "enviado", msg: "El correo de esta solicitud ya se había enviado antes; no se repitió. Destinatario: " + correo + "." };
+    }catch(err){
+      return { estado: "error", reintentable: true, msg: "Las matrículas se guardaron, pero no se pudieron preparar los datos del correo: " + err.message + " Puedes reintentar sin duplicar nada." };
+    }
   }
   // 3) envío (el script comprueba la sesión, las matrículas guardadas y los límites)
   try{
@@ -1178,9 +1201,12 @@ async function finalizarMatricula(){
   finalizando = true; btn.disabled = true; btn.textContent = "Guardando…";
   try{
     // Todas las matrículas o ninguna; con el mismo id de solicitud un reintento devuelve lo ya guardado
-    const guardado = await rpc("guardar_solicitud", { p_clave: tokenInterno, p_solicitud: solicitudActual.id, p_fichas: fichasActuales });
+    const cifrar = cifradoActivo();
+    const guardado = cifrar
+      ? await rpc("guardar_solicitud_cifrada", { p_clave: tokenInterno, p_solicitud: solicitudActual.id, p_matriculas: await matriculasCifradas(solicitudActual, fichasActuales), p_paquete: paqueteCorreo(fichasActuales) })
+      : await rpc("guardar_solicitud", { p_clave: tokenInterno, p_solicitud: solicitudActual.id, p_fichas: fichasActuales });
     solicitudActual.guardada = true;
-    solicitudGuardada = { id: solicitudActual.id, fichas: fichasActuales.slice() };
+    solicitudGuardada = { id: solicitudActual.id, fichas: fichasActuales.slice(), cifrada: cifrar };
 
     // Si venía de una pre-matrícula, eliminarla (el código ya se usó)
     if (codigoPreCargado){
@@ -1188,7 +1214,7 @@ async function finalizarMatricula(){
       codigoPreCargado = null;
     }
 
-    const resultado = await enviarCorreoSolicitud(solicitudGuardada.id, solicitudGuardada.fichas, tokenInterno);
+    const resultado = await enviarCorreoSolicitud(solicitudGuardada.id, solicitudGuardada.fichas, tokenInterno, solicitudGuardada.cifrada);
     mostrarFinal(resultado, guardado);
   }catch(err){
     aviso("No se pudo guardar", err.message);
@@ -1229,7 +1255,7 @@ async function reintentarCorreo(){
   const btn = document.getElementById("btnReintentarCorreo");
   btn.disabled = true; btn.textContent = "Enviando…";
   try{
-    const resultado = await enviarCorreoSolicitud(solicitudGuardada.id, solicitudGuardada.fichas, tokenInterno);
+    const resultado = await enviarCorreoSolicitud(solicitudGuardada.id, solicitudGuardada.fichas, tokenInterno, solicitudGuardada.cifrada);
     document.getElementById("doneMail").textContent = resultado.msg;
     document.getElementById("doneSpam").style.display = resultado.estado === "enviado" ? "" : "none";
     btn.style.display = resultado.reintentable ? "" : "none";
@@ -1275,29 +1301,196 @@ async function cargarAdmin(){
   if (!sb){ tb.replaceChildren(filaMensaje("Supabase no está configurado.")); return; }
   tb.replaceChildren(filaMensaje("Cargando…"));
   try{
-    const filas = await rpc("listar_matriculas", { p_clave: tokenAdmin });
-    registros = (filas || []).map(val => ({
-      _key: val._key,
-      folio: val.folio ?? "—",
-      fechaRegistro: val.fechaRegistro ?? "—",
-      tipo: val.tipo ?? "nuevo",
-      estudiante: val.estudiante ?? {},
-      apoderado: val.apoderado ?? {},
-      suplente: val.suplente ?? null,
-      _solicitud: val._solicitud ?? null, _orden: val._orden ?? null, _hermanos: val._hermanos ?? 1, _correo: val._correo ?? null
-    }));
+    const filas = (await rpc("listar_matriculas", { p_clave: tokenAdmin })) || [];
+    filasCrudas = filas;
+    const hayCifradas = filas.some(v => v._cifrado);
+    const meta = val => ({ _solicitud: val._solicitud ?? null, _orden: val._orden ?? null, _hermanos: val._hermanos ?? 1, _correo: val._correo ?? null });
+    let noAbren = 0;
+    registros = [];
+    if (hayCifradas && !llaveColegio){
+      // Datos cifrados y panel bloqueado: no se muestra nada hasta desbloquear con la llave del colegio
+    } else {
+      for (const val of filas){
+        if (val._cifrado){
+          try{
+            const f = await Cifrado.descifrarFicha(val._cifrado, llaveColegio, "matricula:" + val._key);
+            registros.push({ _key: val._key, folio: val.folio ?? "—", fechaRegistro: val.fechaRegistro ?? "—", tipo: val.tipo ?? "nuevo",
+              estudiante: f.estudiante ?? {}, apoderado: f.apoderado ?? {}, suplente: f.suplente ?? null, _cifrada: true, ...meta(val) });
+          }catch(e){ noAbren++; }
+        } else {
+          const { _key, _solicitud, _orden, _hermanos, _correo, ...cruda } = val;
+          registros.push({ _key, folio: val.folio ?? "—", fechaRegistro: val.fechaRegistro ?? "—", tipo: val.tipo ?? "nuevo",
+            estudiante: val.estudiante ?? {}, apoderado: val.apoderado ?? {}, suplente: val.suplente ?? null, _cifrada: false, _cruda: cruda, ...meta(val) });
+        }
+      }
+    }
     // Orden ascendente 1, 2, 3... por folio (numérico si es posible, si no por fecha de registro)
     registros.sort((a,b)=>{
       const na = Number(a.folio), nb = Number(b.folio);
       if (!isNaN(na) && !isNaN(nb)) return na - nb;
       return (a.fechaRegistro > b.fechaRegistro) ? 1 : -1;
     });
+    pintarAvisoCifrado({ hayCifradas, noAbren });
     poblarFiltroCursosAdmin();
     aplicarFiltrosAdmin();
+    if (hayCifradas && !llaveColegio){ tb.replaceChildren(filaMensaje("🔒 Los datos están cifrados. Desbloquéalos con la llave del colegio para verlos.")); pedirLlave(); }
   }catch(err){
     console.error(err);
     tb.replaceChildren(filaMensaje("No se pudieron cargar las matrículas: " + err.message));
   }
+}
+
+/* ---------- Cifrado de las matrículas ---------- */
+// Encendido solo si js/llave-publica.js trae la llave pública del colegio (si no, la página funciona como siempre).
+function cifradoActivo(){ return !!(window.Cifrado && window.LLAVE_PUBLICA_COLEGIO && window.LLAVE_PUBLICA_COLEGIO.kid && window.LLAVE_PUBLICA_COLEGIO.publica); }
+
+// Cifra cada ficha con la llave pública. El identificador de la matrícula se genera aquí y se conserva en los reintentos.
+async function matriculasCifradas(solicitud, fichas){
+  if (!solicitud.mids || solicitud.mids.length !== fichas.length) solicitud.mids = fichas.map(() => nuevoUuid());
+  const filas = [];
+  for (let i = 0; i < fichas.length; i++){
+    const f = fichas[i], mid = solicitud.mids[i];
+    filas.push({ id: mid, folio: Number(f.folio), tipo: f.tipo, fechaRegistro: f.fechaRegistro,
+                 cifrado: await Cifrado.cifrarFicha(f, window.LLAVE_PUBLICA_COLEGIO, "matricula:" + mid) });
+  }
+  return filas;
+}
+
+// Datos TEMPORALES que necesita el correo (la base no puede leer las matrículas cifradas). Se borran al enviarse.
+function paqueteCorreo(fichas){
+  const correo = (fichas[0].apoderado.correo || "").trim();
+  if (!correo) return null;
+  return { destinatario: correo, apoderado: fichas[0].apoderado.nombre || "",
+           estudiantes: fichas.map(f => ({ folio: String(f.folio), nombre: f.estudiante.nombre || "", rut: f.estudiante.rut || "",
+                                           cursoMatricula: f.estudiante.cursoMatricula || "", procedencia: f.estudiante.procedencia || "" })) };
+}
+
+// Aviso del panel: bloqueado / desbloqueado / matrículas sin cifrar / matrículas que no abren
+function pintarAvisoCifrado({ hayCifradas, noAbren }){
+  const caja = document.getElementById("avisoCifrado");
+  const sinCifrar = registros.filter(r => !r._cifrada).length;
+  const partes = [];
+  const boton = (texto, accion) => el("button", { class: "btn btn-ghost btn-chico", type: "button", texto, datos: { click: accion } });
+  if (hayCifradas && !llaveColegio){
+    partes.push(el("span", { texto: "🔒 Datos cifrados y bloqueados. " }), boton("Desbloquear con la llave", "pedirLlave"));
+  } else if (llaveColegio){
+    partes.push(el("span", { texto: "🔓 Desbloqueado: se vuelve a bloquear solo tras 10 minutos sin usar el panel. " }), boton("Bloquear ahora", "bloquearLlaveAhora"));
+  }
+  if (llaveColegio && cifradoActivo() && sinCifrar > 0){
+    partes.push(el("br"), el("span", { class: "aviso-cifrado-alerta", texto: `⚠️ ${sinCifrar} matrícula(s) todavía sin cifrar. ` }), boton("Cifrar ahora", "abrirConvertir"));
+  }
+  if (noAbren > 0){
+    partes.push(el("br"), el("span", { class: "aviso-cifrado-alerta", texto: `⚠️ ${noAbren} matrícula(s) no se pudieron abrir con esta llave (¿es otra llave, o los datos fueron alterados?).` }));
+  }
+  const dup = rutsRepetidos();
+  if (dup.length){
+    partes.push(el("br"), el("span", { class: "aviso-cifrado-alerta", texto: "⚠️ RUT repetido en distintas solicitudes: " + dup.join(", ") + "." }));
+  }
+  document.getElementById("btnRespaldoCifrado").hidden = !hayCifradas;
+  caja.replaceChildren(...partes);
+  caja.hidden = partes.length === 0;
+}
+// Con los datos cifrados la base ya no puede avisar de un RUT repetido: se revisa aquí, con los datos abiertos
+function rutsRepetidos(){
+  const vistos = new Map(), rep = new Set();
+  for (const r of registros){
+    const rut = limpiarRut(r.estudiante.rut || "");
+    if (rut.length < 7) continue;
+    if (vistos.has(rut) && vistos.get(rut) !== r._solicitud) rep.add(r.estudiante.rut);
+    else if (!vistos.has(rut)) vistos.set(rut, r._solicitud);
+  }
+  return [...rep];
+}
+
+// Desbloqueo con el archivo (o el texto) de la llave y la clave de la persona. La llave privada queda solo en memoria.
+const MENSAJES_LLAVE = { archivo_no_valido: "El archivo no es una llave del colegio válida.", clave_incorrecta: "Clave incorrecta, o el archivo de llave está dañado." };
+function pedirLlave(){
+  document.getElementById("msgLlave").textContent = "";
+  document.getElementById("claveLlave").value = ""; ponerVistaClave("claveLlave", false);
+  abrir("ovLlave");
+}
+async function desbloquearLlave(){
+  const f = document.getElementById("archivoLlave").files[0], pegado = document.getElementById("pegarLlave").value.trim(), clave = document.getElementById("claveLlave").value;
+  const msg = document.getElementById("msgLlave"), btn = document.getElementById("btnDesbloquear");
+  if (!f && !pegado){ msg.textContent = "Elige el archivo de llave o pega su texto."; return; }
+  if ((f && f.size > 20000) || pegado.length > 20000){ msg.textContent = MENSAJES_LLAVE.archivo_no_valido; return; }
+  btn.disabled = true; msg.textContent = "Abriendo… (puede tardar un par de segundos)";
+  try{
+    llaveColegio = await Cifrado.abrirLlave(f ? await f.text() : pegado, clave);
+    document.getElementById("claveLlave").value = ""; document.getElementById("pegarLlave").value = ""; document.getElementById("archivoLlave").value = "";
+    msg.textContent = "";
+    cerrar("ovLlave"); ponerVistaClave("claveLlave", false);
+    reiniciarBloqueoLlave();
+    cargarAdmin();
+  }catch(e){
+    llaveColegio = null;
+    msg.textContent = MENSAJES_LLAVE[e.codigo] || "No se pudo abrir la llave.";
+  }finally{ btn.disabled = false; }
+}
+const MINUTOS_BLOQUEO_LLAVE = 10;
+function reiniciarBloqueoLlave(){ clearTimeout(temporizadorLlave); if (llaveColegio) temporizadorLlave = setTimeout(() => bloquearLlave(false), MINUTOS_BLOQUEO_LLAVE * 60000); }
+["click", "keydown", "input"].forEach(ev => document.addEventListener(ev, reiniciarBloqueoLlave));
+function bloquearLlave(silencioso){
+  const estabaAbierta = !!llaveColegio;
+  llaveColegio = null; clearTimeout(temporizadorLlave);
+  if (!estabaAbierta) return;
+  registros = []; registrosVisibles = []; filasCrudas = [];
+  const tb = document.getElementById("tbodyAdmin"); if (tb) tb.replaceChildren();
+  if (!silencioso && document.getElementById("scr-admin").classList.contains("active")) cargarAdmin();
+}
+function bloquearLlaveAhora(){ bloquearLlave(false); }
+
+// Cifrar las matrículas que quedaron sin cifrar (las anteriores al cifrado). Cada una se comprueba antes de reemplazar la copia sin cifrar.
+function abrirConvertir(){
+  if (!llaveColegio || !cifradoActivo()) { aviso("Primero desbloquea", "Desbloquea los datos con la llave del colegio para poder cifrar las matrículas antiguas."); return; }
+  const n = registros.filter(r => !r._cifrada).length;
+  if (!n){ aviso("Nada que cifrar", "Todas las matrículas ya están cifradas."); return; }
+  document.getElementById("textoConvertir").textContent = `Se cifrarán ${n} matrícula(s) que están guardadas sin cifrar.`;
+  abrir("ovConvertir");
+}
+async function convertirAntiguas(){
+  if (!llaveColegio || !cifradoActivo()) return;
+  const lista = registros.filter(r => !r._cifrada);
+  const btn = document.getElementById("btnConvertir");
+  btn.disabled = true; let hechas = 0, omitidas = 0, fallas = 0;
+  try{
+    for (const r of lista){
+      btn.textContent = `Cifrando ${hechas + omitidas + fallas + 1} de ${lista.length}…`;
+      const ficha = r._cruda;
+      try{
+        const cifrado = await Cifrado.cifrarFicha(ficha, window.LLAVE_PUBLICA_COLEGIO, "matricula:" + r._key);
+        const prueba = await Cifrado.descifrarFicha(cifrado, llaveColegio, "matricula:" + r._key);     // se comprueba ANTES de reemplazar
+        if (JSON.stringify(prueba) !== JSON.stringify(JSON.parse(JSON.stringify(ficha)))) throw new Error("no coincide");
+        const hecho = await rpc("convertir_matricula", { p_clave: tokenAdmin, p_id: r._key, p_cifrado: cifrado });
+        if (hecho === false) omitidas++; else hechas++;
+      }catch(e){ console.error(e); fallas++; }
+    }
+  } finally {
+    btn.disabled = false; btn.textContent = "Cifrar ahora"; cerrar("ovConvertir");
+  }
+  aviso("Cifrado terminado", `Se cifraron ${hechas} matrícula(s)` + (omitidas ? `, ${omitidas} ya estaban cifradas` : "") + (fallas ? `, y ${fallas} no se pudieron cifrar (siguen sin cambios; reintenta)` : "") + ".");
+  cargarAdmin();
+}
+
+// Respaldo: las matrículas TAL COMO están cifradas (no necesita la llave y se puede guardar sin riesgo)
+function descargarRespaldoCifrado(){
+  const cifradas = filasCrudas.filter(v => v._cifrado);
+  if (!cifradas.length){ aviso("Sin datos cifrados", "No hay matrículas cifradas para respaldar."); return; }
+  const respaldo = { tipo: "respaldo-matriculas-cifradas", v: 1, creado: new Date().toISOString(),
+    filas: cifradas.map(v => ({ _key: v._key, folio: v.folio, fechaRegistro: v.fechaRegistro, tipo: v.tipo, _solicitud: v._solicitud ?? null, _orden: v._orden ?? null, _cifrado: v._cifrado })) };
+  const url = URL.createObjectURL(new Blob([JSON.stringify(respaldo)], { type: "application/json" }));
+  const a = document.createElement("a"); a.href = url; a.download = "Respaldo_cifrado_matriculas_INCOSAF_2027.json";
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+// Copiar la tabla (columnas separadas por tabulador) para pegarla en Excel o Numbers; sirve cuando no se pueden descargar archivos
+async function copiarTabla(){
+  if (!registrosVisibles.length){ aviso("Sin datos", "No hay matrículas para copiar con el filtro actual."); return; }
+  const filas = filasParaExcel(registrosVisibles), cols = Object.keys(filas[0]);
+  const limpia = v => String(v == null ? "" : v).replace(/[\t\r\n]+/g, " ");
+  const tsv = [cols.join("\t")].concat(filas.map(f => cols.map(c => limpia(f[c])).join("\t"))).join("\n");
+  try{ await navigator.clipboard.writeText(tsv); aviso("Tabla copiada", "Pégala en Excel o Numbers."); }
+  catch(e){ document.getElementById("textoTabla").value = tsv; abrir("ovTabla"); document.getElementById("textoTabla").select(); }
 }
 
 function poblarFiltroCursosAdmin(){
@@ -1417,7 +1610,7 @@ async function reenviarCorreo(solicitudId){
   if (!hermanos.length) return;
   const fichas = hermanos.map(r => ({ folio: String(r.folio), fechaRegistro: r.fechaRegistro, tipo: r.tipo, estudiante: r.estudiante, apoderado: r.apoderado, suplente: r.suplente }));
   aviso("Reenviando correo", "Generando los certificados y enviando…");
-  const resultado = await enviarCorreoSolicitud(solicitudId, fichas, tokenAdmin);
+  const resultado = await enviarCorreoSolicitud(solicitudId, fichas, tokenAdmin, hermanos.some(r => r._cifrada));
   aviso("Reenvío de correo", resultado.msg);
   cargarAdmin();
 }
@@ -1442,9 +1635,9 @@ async function eliminarMatricula(){
     claveEliminarPendiente = null;
   }
 }
-function descargarExcel(){
-  if (!registrosVisibles.length){ aviso("Sin datos","No hay matrículas para exportar con el filtro actual."); return; }
-  const filas = registrosVisibles.map(r=>({
+// Filas del Excel principal (también las usa «Copiar tabla»)
+function filasParaExcel(lista){
+  return lista.map(r=>({
     "Ficha": r.folio, "Fecha registro": r.fechaRegistro,
     "Tipo estudiante": r.tipo==="nuevo"?"Nuevo":"Antiguo",
     "Nombre estudiante": r.estudiante.nombre, "RUT estudiante": r.estudiante.rut,
@@ -1471,6 +1664,10 @@ function descargarExcel(){
     "Solicitud": r._solicitud ? r._solicitud.slice(0, 8).toUpperCase() : "", "N° en la solicitud": r._orden ?? "", "Estudiantes en la solicitud": r._solicitud ? r._hermanos : "",
     "Estado del correo": r._correo ? (ESTADOS_CORREO[r._correo] || [])[1] || r._correo : ""
   }));
+}
+function descargarExcel(){
+  if (!registrosVisibles.length){ aviso("Sin datos","No hay matrículas para exportar con el filtro actual."); return; }
+  const filas = filasParaExcel(registrosVisibles);
   const ws = XLSX.utils.json_to_sheet(filas);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Matrículas 2027");
@@ -1643,6 +1840,8 @@ const ACCIONES = {
   // varios estudiantes y correo
   anadirEstudiante, cambiarTipo, pedirQuitarEstudiante, confirmarQuitarEstudiante, confirmarResumen, editarEstudianteResumen,
   reintentarCorreo, reenviarCorreo,
+  // cifrado de las matrículas
+  pedirLlave, desbloquearLlave, bloquearLlaveAhora, abrirConvertir, convertirAntiguas, descargarRespaldoCifrado, copiarTabla,
   // botones de las filas del panel
   imprimirFichaMatricula, abrirFolioFicha, editarMatricula, confirmarEliminar
 };
@@ -1658,3 +1857,6 @@ function despachar(evento, atributo){
 document.addEventListener("click", e => despachar(e, "click"));
 document.addEventListener("change", e => despachar(e, "change"));
 document.addEventListener("input", e => despachar(e, "input"));
+
+// El aviso de privacidad solo dice que los datos se guardan cifrados cuando el cifrado está realmente encendido
+{ const f = document.getElementById("privCifrado"); if (f) f.hidden = !cifradoActivo(); }
