@@ -101,7 +101,8 @@ const voltea = b64 => { const b = Buffer.from(b64, 'base64'); b[Math.floor(b.len
   ok('se descarga el archivo de llave con su protección', dl.suggestedFilename() === 'llave-del-colegio.json' && archivoDesc.privada.iteraciones >= 600000);
   ok('además del archivo, la pantalla muestra el TEXTO de la llave para copiarlo (por si la descarga no funciona, como en el iPad)', await pg.isVisible('#textoLlave') && JSON.stringify(JSON.parse(await pg.inputValue('#textoLlave'))) === JSON.stringify(archivoDesc));
   const pub = await pg.inputValue('#textoPublica');
-  ok('se muestran los datos PÚBLICOS de la llave para pegarlos en la página real (sin ningún dato de la llave privada)', /^window\.LLAVE_PUBLICA_COLEGIO = \{"kid":"[0-9a-f]{16}","publica":"[A-Za-z0-9+\/=]+"\};$/.test(pub) && !/privada|datos|sal|iv/.test(pub.replace('publica', '').replace('LLAVE_PUBLICA_COLEGIO', '')) && pub.includes(archivoDesc.kid));
+  const objPub = (() => { try { return JSON.parse(pub.replace(/^window\.LLAVE_PUBLICA_COLEGIO = /, '').replace(/;$/, '')); } catch (e) { return null; } })();
+  ok('se muestran los datos PÚBLICOS de la llave para pegarlos en la página real (solo «kid» y «publica»; nada de la llave privada)', /^window\.LLAVE_PUBLICA_COLEGIO = \{/.test(pub) && objPub && Object.keys(objPub).sort().join() === 'kid,publica' && /^[0-9a-f]{16}$/.test(objPub.kid) && objPub.kid === archivoDesc.kid && objPub.publica === archivoDesc.publica);
   ok('en el navegador solo queda la llave PÚBLICA: ni la clave ni la llave privada se guardan', await pg.evaluate(() => { const t = JSON.stringify(Object.assign({}, localStorage)); return !t.includes('privada') && !t.includes('pato-lluvia'); }));
 
   // Copia de la llave para otra persona (con su propia clave)
