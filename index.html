@@ -462,8 +462,11 @@
         <button class="btn btn-gold" id="btnDescargarExcel" data-click="descargarExcel">⬇️ Descargar Excel</button>
         <button class="btn btn-ghost" data-click="descargarExcelLibro">📘 Excel formato libro digital</button>
         <button class="btn btn-ghost" data-click="abrirContadorFolio">🔢 Contador de folio</button>
+        <button class="btn btn-ghost" data-click="copiarTabla" id="btnCopiarTabla">📋 Copiar tabla</button>
+        <button class="btn btn-ghost" data-click="descargarRespaldoCifrado" id="btnRespaldoCifrado" hidden>💾 Respaldo cifrado</button>
       </div>
     </div>
+    <div id="avisoCifrado" class="aviso-cifrado" hidden></div>
     <div class="admin-filtros">
       <input type="text" id="fBusqueda" placeholder="🔎 Buscar por nombre, RUT o apoderado…" data-input="aplicarFiltrosAdmin">
       <select id="fTipo" data-change="aplicarFiltrosAdmin">
@@ -514,13 +517,54 @@
       <p><b>Qué datos pedimos.</b> Datos del estudiante y de su apoderado (identificación, contacto, domicilio, curso o procedencia y antecedentes del apoderado). Si corresponde, también datos de salud o del Programa de Integración Escolar (PIE), que son sensibles y se tratan solo con su autorización expresa.</p>
       <p><b>Para qué los usamos.</b> Para gestionar la matrícula 2027, cumplir los fines educativos del establecimiento y las obligaciones que la normativa educacional nos impone. No se usan para otros fines.</p>
       <p><b>Quién los ve.</b> Solo el personal autorizado del establecimiento, con clave de acceso. No se entregan a terceros, salvo a organismos públicos cuando la ley lo exige (por ejemplo, el Ministerio de Educación) y a los proveedores tecnológicos que alojan el sistema y envían el correo, bajo medidas de seguridad.</p>
-      <p><b>Cómo los protegemos.</b> El acceso exige una clave que se guarda cifrada, las sesiones vencen solas, los intentos fallidos se bloquean y los accesos quedan registrados. Ningún sistema es infalible; si ocurriera un incidente que afecte sus datos, se actuará conforme a la ley.</p>
-      <p><b>Cuánto tiempo.</b> Una pre-matrícula no completada se elimina automáticamente a los 30 días. Los datos de una matrícula se conservan mientras el estudiante esté matriculado y durante los plazos que exija la normativa.</p>
+      <p><b>Cómo los protegemos.</b> El acceso exige una clave que se guarda cifrada, las sesiones vencen solas, los intentos fallidos se bloquean y los accesos quedan registrados. <span id="privCifrado" hidden>Los datos de la matrícula se guardan cifrados: solo el personal autorizado que tiene la llave del colegio puede leerlos.</span> Ningún sistema es infalible; si ocurriera un incidente que afecte sus datos, se actuará conforme a la ley.</p>
+      <p><b>Cuánto tiempo.</b> Una pre-matrícula no completada se elimina automáticamente a las 2 horas. Los datos de una matrícula se conservan mientras el estudiante esté matriculado y durante los plazos que exija la normativa.</p>
       <p><b>Sus derechos.</b> Puede pedir acceso a sus datos, su rectificación, su supresión u oponerse a su tratamiento, en los casos que la ley lo permite, escribiendo al contacto indicado arriba.</p>
       <p><b>Menores de edad.</b> Los datos de niños, niñas y adolescentes se tratan resguardando su interés superior.</p>
     </div>
     <div class="modal-btns">
       <button class="btn btn-pri" data-click="cerrar" data-args='["ovPrivacidad"]'>Entendido</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="ovLlave">
+  <div class="modal modal-llave">
+    <h3>Desbloquear los datos</h3>
+    <p>Las matrículas están cifradas. Para verlas, carga el <b>archivo de llave del colegio</b> (o pega su texto) y escribe <b>tu clave</b>.</p>
+    <div class="campo-llave"><label for="archivoLlave">Archivo de llave</label><input type="file" id="archivoLlave" accept=".json,application/json"></div>
+    <div class="campo-llave"><label for="pegarLlave">…o pega aquí el texto de la llave</label><textarea id="pegarLlave" rows="3" autocomplete="off" spellcheck="false"></textarea></div>
+    <div class="campo-llave"><label for="claveLlave">Clave de la llave</label>
+      <div class="clave-wrap"><input type="password" id="claveLlave" autocomplete="off" placeholder="Clave">
+        <button type="button" class="ojo-clave" data-click="alternarClave" data-args='["claveLlave"]' aria-label="Mostrar clave" aria-pressed="false" title="Mostrar clave">
+          <svg class="ojo-abierto" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg class="ojo-cerrado" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.9 10.9 0 0 1 12 19c-7 0-11-7-11-7a19.8 19.8 0 0 1 5.06-5.94M9.9 4.24A10.4 10.4 0 0 1 12 4c7 0 11 7 11 7a19.9 19.9 0 0 1-3.17 4.19M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+        </button></div></div>
+    <p id="msgLlave" class="hint err" role="status"></p>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" data-click="cerrar" data-args='["ovLlave"]'>Cancelar</button>
+      <button class="btn btn-pri" id="btnDesbloquear" data-click="desbloquearLlave">Desbloquear</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="ovTabla">
+  <div class="modal modal-llave">
+    <h3>Copiar la tabla</h3>
+    <p>No se pudo copiar automáticamente. Selecciona el texto (mantén pulsado), cópialo y pégalo en Excel o Numbers.</p>
+    <textarea id="textoTabla" rows="8" readonly spellcheck="false"></textarea>
+    <div class="modal-btns"><button class="btn btn-pri" data-click="cerrar" data-args='["ovTabla"]'>Listo</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="ovConvertir">
+  <div class="modal">
+    <h3>Cifrar las matrículas antiguas</h3>
+    <p id="textoConvertir"></p>
+    <p class="hint">Antes de empezar, descarga el Excel como respaldo. Cada matrícula se cifra, se comprueba que se puede abrir y recién entonces se reemplaza la copia sin cifrar. Las copias de seguridad que ya tenga Supabase pueden conservar datos sin cifrar por un tiempo.</p>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" data-click="cerrar" data-args='["ovConvertir"]'>Cancelar</button>
+      <button class="btn btn-pri" id="btnConvertir" data-click="convertirAntiguas">Cifrar ahora</button>
     </div>
   </div>
 </div>
@@ -626,7 +670,9 @@
 <!-- Área de impresión -->
 <div id="printArea"></div>
 
-<script src="js/app.js?v=20261102"></script>
-<script src="js/ui.js?v=20261102"></script>
+<script src="js/cifrado.js?v=20261121"></script>
+<script src="js/llave-publica.js?v=20261121"></script>
+<script src="js/app.js?v=20261121"></script>
+<script src="js/ui.js?v=20261121"></script>
 </body>
 </html>

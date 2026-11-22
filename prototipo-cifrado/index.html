@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- connect-src 'none': esta página NO puede enviar nada a internet; la «base de datos» es simulada en este navegador -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<title>Prototipo de cifrado</title>
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<div class="banner">PROTOTIPO · datos ficticios · no está conectado a ningún servidor</div>
+<main>
+  <h1>Prototipo: matrícula con datos cifrados</h1>
+  <p class="intro">Los datos se cifran en el navegador con la <b>llave pública</b>. Solo el colegio, con su <b>llave privada</b> y una clave, puede leerlos.
+     Aquí la «base de datos» es simulada: lo que ves en la pestaña 3 es exactamente lo que guardaría Supabase.</p>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab activa" data-tab="llave" role="tab">1 · Llave del colegio</button>
+    <button class="tab" data-tab="apoderado" role="tab">2 · Apoderado</button>
+    <button class="tab" data-tab="bd" role="tab">3 · Base de datos (lo que ve un extraño)</button>
+    <button class="tab" data-tab="panel" role="tab">4 · Panel del colegio</button>
+  </nav>
+
+  <!-- 1 · LLAVE DEL COLEGIO -->
+  <section id="p-llave" class="panel visible">
+    <h2>Crear la llave del colegio</h2>
+    <p>Se hace <b>una sola vez</b>. Se crea un archivo con la llave privada, protegido con una clave. <b>Si se pierden todas las copias del archivo o la clave, los datos no se pueden recuperar.</b></p>
+    <div class="campo"><label for="clave1">Clave que protege la llave (mínimo 12 caracteres: 4 o 5 palabras al azar)</label>
+      <div class="con-ojo"><input id="clave1" type="password" autocomplete="new-password"><button type="button" class="ojo" data-ojo="clave1" aria-label="Mostrar clave" aria-pressed="false">👁</button></div></div>
+    <div class="campo"><label for="clave2">Repite la clave</label>
+      <div class="con-ojo"><input id="clave2" type="password" autocomplete="new-password"><button type="button" class="ojo" data-ojo="clave2" aria-label="Mostrar clave" aria-pressed="false">👁</button></div></div>
+    <label class="check"><input id="debil" type="checkbox"> Solo para probar: permitir una clave corta (como 2179). <b class="rojo">Con una clave corta no hay protección real.</b></label>
+    <p id="msgLlave" class="msg" role="status"></p>
+    <div class="acciones"><button id="btnCrearLlave" class="btn">Crear llave del colegio</button>
+      <button id="btnDescargarLlave" class="btn sec" hidden>Descargar archivo de llave</button></div>
+    <div id="cajaTexto" class="resultado" hidden>
+      <b>¿No se descarga el archivo?</b> (pasa en el iPad o dentro de otra aplicación). Copia este texto y guárdalo en un lugar seguro (por ejemplo, en Notas). Sirve igual que el archivo.
+      <textarea id="textoLlave" readonly rows="4" aria-label="Texto de la llave del colegio"></textarea>
+      <div class="acciones"><button type="button" id="btnCopiarLlave" class="btn sec">Copiar texto de la llave</button></div>
+      <p id="msgCopiarLlave" class="msg" role="status"></p>
+    </div>
+    <div id="cajaPublica" class="resultado" hidden>
+      <b>Datos públicos de la llave</b> (no son secretos: sirven solo para cifrar). Esto es lo que se pega en <code>js/llave-publica.js</code> de la página real:
+      <textarea id="textoPublica" readonly rows="3" aria-label="Datos públicos de la llave"></textarea>
+    </div>
+    <p id="estadoLlave" class="estado"></p>
+    <h2 style="margin-top:22px">Hacer una copia de la llave para otra persona</h2>
+    <p>Cada persona que abre el panel (por ejemplo, director e inspector) puede tener <b>su propia copia con su propia clave</b>. Todas abren los mismos datos. Para hacerla hace falta la llave actual y su clave.</p>
+    <div class="campo"><label for="copiaTexto">Texto de la llave actual (pégalo aquí)</label><textarea id="copiaTexto" rows="3" spellcheck="false" autocomplete="off"></textarea></div>
+    <div class="campo"><label for="copiaClaveActual">Clave actual de esa llave</label>
+      <div class="con-ojo"><input id="copiaClaveActual" type="password" autocomplete="off"><button type="button" class="ojo" data-ojo="copiaClaveActual" aria-label="Mostrar clave" aria-pressed="false">👁</button></div></div>
+    <div class="campo"><label for="copiaNombre">Nombre de la persona (solo para el nombre del archivo)</label><input id="copiaNombre" maxlength="30" autocomplete="off"></div>
+    <div class="campo"><label for="copiaClave1">Clave nueva de esa persona</label>
+      <div class="con-ojo"><input id="copiaClave1" type="password" autocomplete="new-password"><button type="button" class="ojo" data-ojo="copiaClave1" aria-label="Mostrar clave" aria-pressed="false">👁</button></div></div>
+    <div class="campo"><label for="copiaClave2">Repite la clave nueva</label>
+      <div class="con-ojo"><input id="copiaClave2" type="password" autocomplete="new-password"><button type="button" class="ojo" data-ojo="copiaClave2" aria-label="Mostrar clave" aria-pressed="false">👁</button></div></div>
+    <p id="msgCopia" class="msg" role="status"></p>
+    <div class="acciones"><button id="btnCrearCopia" class="btn sec">Crear copia para esa persona</button>
+      <button id="btnDescargarCopia" class="btn sec" hidden>Descargar la copia</button></div>
+    <div id="cajaCopia" class="resultado" hidden><b>Texto de la copia</b> (cópialo si la descarga no funciona):
+      <textarea id="textoCopia" readonly rows="4" aria-label="Texto de la copia de la llave"></textarea></div>
+    <ul class="avisos"><li>Guarda <b>al menos dos copias</b> del archivo en lugares distintos (por ejemplo, un pendrive bajo llave y un administrador de contraseñas).</li>
+      <li>La clave se guarda aparte del archivo. Nunca en el mismo lugar.</li></ul>
+  </section>
+
+  <!-- 2 · APODERADO -->
+  <section id="p-apoderado" class="panel">
+    <h2>Pre-matrícula del apoderado (ejemplo)</h2>
+    <p>Aquí el apoderado llena los datos. Al enviar, <b>el navegador los cifra</b> antes de guardarlos. El apoderado no conoce ninguna clave.</p>
+    <form id="formFicha" novalidate>
+      <div class="rejilla">
+        <div class="campo"><label for="f_nombre">Nombre del estudiante</label><input id="f_nombre" maxlength="80" autocomplete="off"></div>
+        <div class="campo"><label for="f_rut">RUT del estudiante</label><input id="f_rut" maxlength="14" autocomplete="off"></div>
+        <div class="campo"><label for="f_fnac">Fecha de nacimiento</label><input id="f_fnac" type="date"></div>
+        <div class="campo"><label for="f_curso">Curso</label><input id="f_curso" maxlength="30" autocomplete="off"></div>
+        <div class="campo"><label for="f_pie">¿Pertenece al PIE?</label><select id="f_pie"><option value="no">No</option><option value="si">Sí</option></select></div>
+        <div class="campo"><label for="f_diag">Diagnóstico (si es PIE)</label><input id="f_diag" maxlength="120" autocomplete="off"></div>
+        <div class="campo"><label for="f_salud">Problema de salud</label><input id="f_salud" maxlength="120" autocomplete="off" placeholder="Ninguno"></div>
+        <div class="campo"><label for="f_apo">Nombre del apoderado</label><input id="f_apo" maxlength="80" autocomplete="off"></div>
+        <div class="campo"><label for="f_aporut">RUT del apoderado</label><input id="f_aporut" maxlength="14" autocomplete="off"></div>
+        <div class="campo"><label for="f_cel">Celular</label><input id="f_cel" maxlength="20" autocomplete="off"></div>
+        <div class="campo"><label for="f_mail">Correo</label><input id="f_mail" maxlength="80" autocomplete="off"></div>
+      </div>
+      <p class="aviso-datos">Usa solo datos inventados. No escribas datos reales de nadie.</p>
+      <p id="msgFicha" class="msg" role="status"></p>
+      <div class="acciones"><button type="button" id="btnEjemplo" class="btn sec">Cargar ejemplo ficticio</button>
+        <button type="submit" class="btn">Cifrar y enviar</button></div>
+    </form>
+    <div id="resultadoEnvio" class="resultado" hidden>
+      <b>Enviado.</b> Código de matrícula: <b id="folioEnviado"></b>. Esto es lo que salió del navegador (primeros caracteres):
+      <pre id="vistaEnviada"></pre>
+    </div>
+  </section>
+
+  <!-- 3 · BASE DE DATOS -->
+  <section id="p-bd" class="panel">
+    <h2>La base de datos, vista por un extraño</h2>
+    <p>Esto es todo lo que alguien vería si entrara al servidor: folio, fecha y texto sin sentido. Sin la llave privada no hay forma de leer los datos.</p>
+    <div class="campo"><label for="buscaBd">Prueba: buscar un nombre en la base de datos</label>
+      <input id="buscaBd" placeholder="Escribe parte de un nombre, un RUT o un correo…" autocomplete="off"></div>
+    <p id="resBusquedaBd" class="msg" role="status"></p>
+    <div class="tabla-caja"><table id="tablaBd"><thead><tr><th>Folio</th><th>Fecha</th><th>Llave</th><th>Contenido guardado</th></tr></thead><tbody></tbody></table></div>
+    <div class="acciones"><button id="btnVaciarBd" class="btn peligro">Borrar la base simulada</button></div>
+  </section>
+
+  <!-- 4 · PANEL -->
+  <section id="p-panel" class="panel">
+    <h2>Panel del colegio</h2>
+    <div id="bloqueado">
+      <p>El panel está <b>bloqueado</b>: no se ve ningún dato. Para abrirlo hace falta el <b>archivo de llave</b> y su <b>clave</b>.</p>
+      <div class="campo"><label for="archivoLlave">Archivo de llave del colegio</label><input id="archivoLlave" type="file" accept=".json,application/json"></div>
+      <div class="campo"><label for="pegarLlave">…o pega aquí el texto de la llave (si no puedes elegir el archivo)</label><textarea id="pegarLlave" rows="3" autocomplete="off" spellcheck="false"></textarea></div>
+      <div class="campo"><label for="claveAbrir">Clave</label>
+        <div class="con-ojo"><input id="claveAbrir" type="password" autocomplete="off"><button type="button" class="ojo" data-ojo="claveAbrir" aria-label="Mostrar clave" aria-pressed="false">👁</button></div></div>
+      <p id="msgAbrir" class="msg" role="status"></p>
+      <div class="acciones"><button id="btnAbrir" class="btn">Desbloquear</button></div>
+    </div>
+    <div id="abierto" hidden>
+      <div class="barra">
+        <span class="estado ok">Desbloqueado · se bloquea solo tras 10 minutos sin usarlo</span>
+        <button id="btnBloquear" class="btn sec">Bloquear ahora</button>
+      </div>
+      <div class="campo"><label for="buscaPanel">Buscar (nombre, RUT, curso, apoderado…)</label><input id="buscaPanel" autocomplete="off"></div>
+      <p id="resPanel" class="msg" role="status"></p>
+      <div class="tabla-caja"><table id="tablaPanel"><thead><tr><th>Folio</th><th>Estudiante</th><th>RUT</th><th>Curso</th><th>PIE</th><th>Apoderado</th><th>Celular</th><th>Correo</th></tr></thead><tbody></tbody></table></div>
+      <div class="acciones"><button id="btnExcel" class="btn">Descargar Excel</button>
+        <button id="btnCopiarTabla" class="btn sec">Copiar tabla (para pegar en Excel o Numbers)</button></div>
+      <textarea id="textoTabla" readonly rows="5" aria-label="Tabla para copiar" hidden></textarea>
+      <p class="aviso-datos">El Excel descargado <b>no está cifrado</b>: ponle contraseña y guárdalo en un lugar protegido. También sirve como respaldo legible.</p>
+    </div>
+  </section>
+</main>
+<script src="../vendor/xlsx-0.18.5.full.min.js"></script>
+<script src="../js/cifrado.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -252,6 +252,14 @@ table.lista tbody tr:hover td{background:var(--azul-claro)}
 .modal-privacidad{max-width:640px;max-height:88vh;display:flex;flex-direction:column}
 .privacidad-texto{overflow-y:auto;text-align:left;font-size:.9rem;line-height:1.5;margin:8px 0 14px;padding-right:6px}
 .privacidad-texto p{margin:0 0 10px}
+[hidden]{display:none!important}
+.aviso-cifrado{background:#eef2f8;border:1px solid #d3dbe8;border-radius:14px;padding:10px 14px;margin:0 0 14px;font-size:.88rem;line-height:1.9}
+.aviso-cifrado-alerta{color:#8a4b00;font-weight:600}
+.btn-chico{padding:6px 12px;font-size:.8rem;margin-left:6px}
+.modal-llave{max-width:560px}
+.campo-llave{margin:0 0 12px;text-align:left}
+.campo-llave label{display:block;font-size:.8rem;font-weight:600;margin-bottom:6px}
+.campo-llave textarea,#ovTabla textarea{width:100%;padding:10px 12px;border:1px solid var(--borde);border-radius:12px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.75rem;background:#fbfbfd}
 ol.compromisos{margin:12px 0 14px 22px;padding:0}
 ol.compromisos li{margin-bottom:8px}
 @media print{

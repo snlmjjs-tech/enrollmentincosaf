@@ -37,5 +37,8 @@ detener
 correr prueba-pdf                  node tests/seguridad/prueba-pdf.js
 correr prueba-generador            node tests/seguridad/prueba-generador.js
 correr prueba-proteccion-produccion node tests/seguridad/prueba-proteccion-produccion.js
+correr prueba-prototipo-cifrado   node tests/seguridad/prueba-prototipo-cifrado.js
+export PGPORT=5499; base 5499 "$ANTERIOR";  correr prueba-cifrado-sql        node tests/seguridad/prueba-cifrado-sql.js
+base 5499 "$ANTERIOR";  correr prueba-cifrado-navegador node tests/seguridad/prueba-cifrado-navegador.js
 echo; echo "=== RESUMEN (también en $RESUMEN) ==="; cat "$RESUMEN"
 ! grep -qE "[1-9][0-9]* (fallidas|pruebas fallidas)|[1-9][0-9]* fallidas" "$RESUMEN"
