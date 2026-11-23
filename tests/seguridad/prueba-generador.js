@@ -28,6 +28,7 @@ console.log('\n1) Generación correcta con un proyecto de pruebas');
 let r = correr(['--supabase-url', URL_PRUEBA, '--supabase-key', CLAVE_PRUEBA, '--apps-script-url', APPS_PRUEBA]);
 ok('termina bien y crea la carpeta de pruebas', r.status === 0 && fs.existsSync(r.salida), (r.stderr || '').slice(0, 200));
 const app = r.status === 0 ? leer(r, 'js/app.js') : '', html = r.status === 0 ? leer(r, 'index.html') : '';
+ok('la página de PRUEBAS tiene el cifrado APAGADO y no lleva la llave pública real del colegio', r.status === 0 && /LLAVE_PUBLICA_COLEGIO = null;/.test(leer(r, 'js/llave-publica.js')) && !/"kid"/.test(leer(r, 'js/llave-publica.js')));
 ok('js/app.js apunta a la URL y la clave de PRUEBAS', app.includes(`const SUPABASE_URL = "${URL_PRUEBA}"`) && app.includes(CLAVE_PRUEBA) && app.includes(APPS_PRUEBA));
 ok('no queda NADA de producción (ni proyecto, ni clave pública real, ni Apps Script real)', !app.includes(REF_PROD) && !html.includes(REF_PROD) && !/sb_publishable_bjKNRf/.test(app) && !/AKfycbzFw8rbYDDGh9ZDQ5oC/.test(app) && !/AKfycbyuK1KURduUz0Nvrodo/.test(app));
 ok('la política de seguridad (CSP) solo permite hablar con el proyecto de pruebas', html.includes(`connect-src 'self' ${URL_PRUEBA}`) && !html.includes(REF_PROD));

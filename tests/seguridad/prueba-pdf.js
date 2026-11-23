@@ -19,7 +19,7 @@ const guardar = (nombre, b64) => { const f = path.join(tmp, nombre); fs.writeFil
 const texto = f => execFileSync('pdftotext', ['-layout', f, '-']).toString();
 
 (async () => {
-  const srv = await new Promise(r => { const s = http.createServer((q, res) => { const u = decodeURIComponent(q.url.split('?')[0]); const f = path.join(RAIZ, u === '/' ? 'index.html' : u);
+  const srv = await new Promise(r => { const s = http.createServer((q, res) => { const u = decodeURIComponent(q.url.split('?')[0]); if (u === '/js/llave-publica.js') { res.writeHead(200, { 'Content-Type': 'application/javascript' }); return res.end('window.LLAVE_PUBLICA_COLEGIO = null;'); } const f = path.join(RAIZ, u === '/' ? 'index.html' : u);
     if (!f.startsWith(RAIZ) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); return res.end(); } res.writeHead(200, { 'Content-Type': tipos[path.extname(f)] || 'text/plain' }); fs.createReadStream(f).pipe(res); }).listen(0, '127.0.0.1', () => r(s)); });
   const nav = await chromium.launch(); const pg = await nav.newPage();
   await pg.route(/fonts\.|supabase\.co|script\.google/, r => r.abort());
