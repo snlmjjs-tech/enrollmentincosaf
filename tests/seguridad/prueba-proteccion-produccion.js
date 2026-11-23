@@ -54,5 +54,17 @@ const claves = rutas.filter(f => { try { return /(clave|secret|password|contrase
 ok('ningún archivo (fuera de las pruebas) asigna una clave o contraseña literal', claves.length === 0, claves.join(','));
 ok('no hay archivos .env ni de claves versionados', !rutas.some(f => /(^|\/)\.env|\.pem$|\.key$/.test(f)));
 ok('las claves de las pruebas son ficticias y están solo en tests/', true);
+console.log('\n5) La llave pública del cifrado (js/llave-publica.js)');
+{
+  const w = {}; new Function('window', fs.readFileSync(path.join(RAIZ, 'js/llave-publica.js'), 'utf8'))(w);
+  const k = w.LLAVE_PUBLICA_COLEGIO, cr = require('crypto');
+  if (k === null) ok('el cifrado está APAGADO (llave pública = null): la página guarda como siempre', true);
+  else {
+    let pub = null; try { pub = cr.createPublicKey({ key: Buffer.from(String(k.publica), 'base64'), format: 'der', type: 'spki' }); } catch (e) { pub = null; }
+    ok('la llave pública configurada es válida: solo trae «kid» y «publica» (nada de la llave privada)', Object.keys(k).sort().join() === 'kid,publica' && !!pub);
+    ok('su huella (kid) coincide con la llave: no hay errores al copiarla', !!pub && cr.createHash('sha256').update(Buffer.from(k.publica, 'base64')).digest('hex').slice(0, 16) === k.kid);
+    ok('es una llave RSA de 3072 bits (la que usa el módulo de cifrado)', !!pub && pub.asymmetricKeyType === 'rsa' && pub.asymmetricKeyDetails.modulusLength === 3072);
+  }
+}
 console.log(`\nResultado: ${P} comprobaciones correctas, ${F} fallidas`);
 process.exit(F ? 1 : 0);

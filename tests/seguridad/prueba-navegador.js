@@ -30,6 +30,7 @@ function servidorEstatico() {
   return new Promise(resolve => {
     const s = http.createServer((req, res) => {
       const ruta = decodeURIComponent(req.url.split('?')[0]);
+      if (ruta === '/js/llave-publica.js') { res.writeHead(200, { 'Content-Type': 'application/javascript' }); return res.end('window.LLAVE_PUBLICA_COLEGIO = null;'); }   // sin cifrado: no usa la llave real
       // APP_JS=<archivo>: sirve otra versión de js/app.js (por ejemplo la minificada) para probarla
       const archivo = (process.env.APP_JS && ruta === '/js/app.js') ? process.env.APP_JS : path.join(RAIZ, ruta === '/' ? 'index.html' : ruta);
       if ((!archivo.startsWith(RAIZ) && archivo !== process.env.APP_JS) || !fs.existsSync(archivo) || fs.statSync(archivo).isDirectory()) { res.writeHead(404); return res.end('no existe'); }

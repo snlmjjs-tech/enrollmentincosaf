@@ -55,6 +55,8 @@ const copiar = (de, a) => { fs.mkdirSync(path.dirname(a), { recursive: true }); 
 const recorrer = d => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? recorrer(path.join(d, e.name)) : [path.join(d, e.name)]);
 for (const carpeta of ['css', 'js', 'assets', 'vendor']) for (const f of recorrer(path.join(RAIZ, carpeta))) copiar(f, path.join(salida, path.relative(RAIZ, f)));
 // (no se copian CNAME, nomina2026.json ni nada con datos reales)
+// La página de pruebas NO cifra con la llave real del colegio: se deja el cifrado apagado
+fs.writeFileSync(path.join(salida, 'js/llave-publica.js'), '/* Página de pruebas: el cifrado está apagado. */\nwindow.LLAVE_PUBLICA_COLEGIO = null;\n');
 
 let app = fs.readFileSync(path.join(salida, 'js/app.js'), 'utf8');
 const cambios = [
