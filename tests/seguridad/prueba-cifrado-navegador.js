@@ -78,7 +78,7 @@ async function llenarEst(pg, n, o) {
   await radioPill(pg, `input[name=tipo_${n}][value=${o.tipo}]`);
   await f('nombre', o.nombre); await f('rut', o.rut); await pg.press(idE(n, 'rut'), 'Tab'); await f('fnac', '2012-05-10'); await f('dir', 'Calle Ficticia 123 TEST');
   await f('comuna', 'Comuna TEST'); await f('nacionalidad', 'Chilena'); await f('cel', '+56 9 0000 0000');
-  if (o.tipo === 'nuevo') { await f('procedencia', 'Colegio TEST'); if (o.curso) await pg.selectOption(idE(n, 'cursoNuevo'), o.curso); }
+  if (o.tipo === 'nuevo') { await f('procedencia', 'Colegio TEST'); if (o.prom !== undefined) await f('prom8', o.prom); if (o.curso) await pg.selectOption(idE(n, 'cursoNuevo'), o.curso); }
   else { await pg.selectOption(idE(n, 'cursoAnt'), o.curso || '2° Medio'); await f('letraAnt', o.letra || 'a'); }
   await radioPill(pg, `input[name=${gn(n, 'rep')}][value=no]`);
   await radioPill(pg, `input[name=${gn(n, 'pie')}][value=${o.pie || 'no'}]`);
@@ -103,12 +103,12 @@ const hayPdftotext = (() => { try { execFileSync('pdftotext', ['-v'], { stdio: '
 const textoPdf = buf => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'incosaf-pdf-')); const f = path.join(d, 'c.pdf'); fs.writeFileSync(f, buf); try { return execFileSync('pdftotext', ['-layout', f, '-']).toString(); } finally { fs.rmSync(d, { recursive: true, force: true }); } };
 
 
-const NOMBRES = ['Ana TEST', 'Beto TEST', 'Apoderado TEST', 'apoderado.test@example.invalid', 'Calle Ficticia', 'Comuna TEST', '+56 9 0000', 'Diagnóstico TEST', 'Colegio TEST'];
+const NOMBRES = ['Ana TEST', 'Beto TEST', 'Apoderado TEST', 'apoderado.test@example.invalid', 'Calle Ficticia', 'Comuna TEST', '+56 9 0000', 'Diagnóstico TEST', 'Colegio TEST', '5,87'];
 const conPuntos = r => r.replace(/^(\d+)(\d{3})(\d{3})-/, '$1.$2.$3-');
 const sinLegible = t => NOMBRES.every(x => !t.includes(x)) && !t.includes(rut(41000001)) && !t.includes(conPuntos(rut(41000001)));
 const H = [
   { nombre: 'Ana TEST Uno', rut: rut(41000001), tipo: 'antiguo', curso: '1° Medio', letra: 'a', pie: 'si' },
-  { nombre: 'Beto TEST Dos', rut: rut(41000002), tipo: 'nuevo', curso: '2° Medio' }
+  { nombre: 'Beto TEST Dos', rut: rut(41000002), tipo: 'nuevo', curso: '2° Medio', prom: '5,87' }
 ];
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const abrirPanel = async (pg, key) => { await pg.click('.admin-link'); await pg.fill('#inputClave', ENC); await pg.click('#ovClave .btn-pri'); await pg.waitForTimeout(900); };
@@ -131,7 +131,9 @@ const nFilas = pg => pg.evaluate(() => document.querySelectorAll('#tbodyAdmin tr
     let pg = await abrir('/index.html', { dl: true }); await entrar(pg);
     ok('el aviso de privacidad dice que los datos se guardan cifrados (la llave está configurada)', await pg.evaluate(() => !document.getElementById('privCifrado').hidden));
     await pg.click('.card-btn:nth-child(1)');
-    await llenarEst(pg, 1, H[0]); await pg.click('#btnAddEst'); await llenarEst(pg, 2, H[1]); await llenarApoderado(pg);
+    await llenarEst(pg, 1, H[0]);
+    ok('el promedio de egreso de 8° NO aparece para el estudiante antiguo', !(await pg.isVisible('#e_prom8'))); await pg.click('#btnAddEst'); await llenarEst(pg, 2, H[1]);
+    ok('el promedio de egreso de 8° SÍ aparece para el estudiante nuevo, como campo opcional', await pg.isVisible('#e2_prom8') && /opcional/.test(await pg.textContent('#est2'))); await llenarApoderado(pg);
     await enviar(pg);
     ok('con 2 estudiantes se pasa por el resumen', await pant(pg) === 'scr-resumen'); await pg.click('#btnConfirmarResumen'); await pg.waitForTimeout(1000);
     ok('se generan 12 hojas (6 por estudiante) y el consentimiento dice que las matrículas se guardan cifradas', (await hojas(pg)) === 12 && (await pg.evaluate(() => document.getElementById('printArea').innerText)).includes('se guardan cifradas'));
@@ -162,7 +164,7 @@ const nFilas = pg => pg.evaluate(() => document.querySelectorAll('#tbodyAdmin tr
     const [dx] = await Promise.all([pp.waitForEvent('download'), pp.click('#btnDescargarExcel')]);
     const rx = path.join(path.dirname(RUTA), 'matriculas.xlsx'); await dx.saveAs(rx);
     const hoja = XLSX.utils.sheet_to_json(XLSX.readFile(rx).Sheets['Matrículas 2027']);
-    ok('el Excel sale LEGIBLE con los datos completos (descifrados en el navegador)', hoja.length === 2 && hoja[0]['Nombre estudiante'] === 'Ana TEST Uno' && hoja[0]['RUT estudiante'].replace(/\./g, '') === rut(41000001) && hoja[0]['Correo apoderado'] === DEST && hoja[0]['Diagnóstico PIE'] === 'Diagnóstico TEST', JSON.stringify(hoja[0]).slice(0, 200));
+    ok('el Excel sale LEGIBLE con los datos completos (descifrados en el navegador)', hoja.length === 2 && hoja[0]['Nombre estudiante'] === 'Ana TEST Uno' && hoja[0]['RUT estudiante'].replace(/\./g, '') === rut(41000001) && hoja[0]['Correo apoderado'] === DEST && hoja[0]['Diagnóstico PIE'] === 'Diagnóstico TEST' && hoja[1]['Promedio egreso 8° básico'] === '5,87' && !hoja[0]['Promedio egreso 8° básico'], JSON.stringify(hoja[0]).slice(0, 200));
     await pp.click('#btnCopiarTabla'); await pp.waitForTimeout(500);
     const tsv = await pp.evaluate(() => document.getElementById('textoTabla').value);
     ok('«Copiar tabla» deja el texto para pegar en Excel (si el navegador no deja copiar, se muestra para copiarlo a mano)', tsv.startsWith('Ficha\tFecha registro') && tsv.includes('Ana TEST Uno') && tsv.split('\n').length === 3 || (await pp.isVisible('#ovAviso')));

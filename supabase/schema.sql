@@ -344,9 +344,15 @@ begin
 
   e := p->'estudiante'; a := p->'apoderado'; s := p->'suplente';
   perform public._validar_seccion('estudiante', e, array[
-    'nombre','rut','fnac','direccion','comuna','nacionalidad','celular','correo','procedencia',
+    'nombre','rut','fnac','direccion','comuna','nacionalidad','celular','correo','procedencia','promedio8',
     'cursoMatricula','repitencia','repCurso','repAnio','pie','pieDiagnostico','pieDocumentacion',
     'salud','saludDetalle','observaciones']);
+  -- Promedio de egreso de 8° básico (opcional): una nota de 1,0 a 7,0, con coma y hasta 2 decimales
+  if coalesce(e->>'promedio8', '') <> '' then
+    if e->>'promedio8' !~ '^[1-7](,[0-9]{1,2})?$' or replace(e->>'promedio8', ',', '.')::numeric > 7 then
+      raise exception 'dato_invalido: el promedio de egreso de 8° debe ser una nota de 1,0 a 7,0';
+    end if;
+  end if;
   perform public._validar_seccion('apoderado', a, array[
     'nombre','rut','edad','direccion','comuna','nacionalidad','celular','correo','parentesco',
     'viveConEstudiante','nivelEducacional','situacionLaboral','lugarTrabajo']);

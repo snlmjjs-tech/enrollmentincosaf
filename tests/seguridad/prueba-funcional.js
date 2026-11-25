@@ -54,7 +54,7 @@ const radio = (pg, n, v) => pg.check(`input[name=${n}][value=${v}]`, { force: tr
 async function llenar(pg, o) {
   const set = (id, v) => pg.fill('#' + id, v);
   await set('e_nombre', o.nombre); await set('e_rut', o.rut); await pg.press('#e_rut', 'Tab'); await set('e_fnac', '2012-05-10'); await set('e_dir', 'Calle Ficticia 123 TEST'); await set('e_comuna', 'Comuna TEST'); await set('e_nacionalidad', 'Chilena'); await set('e_cel', '+56 9 0000 0000'); await set('e_mail', o.mailE || '');
-  if (o.tipo === 'nuevo') await set('e_procedencia', 'Colegio TEST'); else { await pg.selectOption('#e_cursoAnt', { index: 1 }); await set('e_letraAnt', 'a'); }
+  if (o.tipo === 'nuevo') { await set('e_procedencia', 'Colegio TEST'); if (o.prom !== undefined) await set('e_prom8', o.prom); } else { await pg.selectOption('#e_cursoAnt', { index: 1 }); await set('e_letraAnt', 'a'); }
   await radio(pg, 'rep', 'no'); await radio(pg, 'pie', o.pie || 'no'); if (o.pie === 'si') { await set('e_pieDiag', 'Diagnóstico TEST'); await radio(pg, 'pieDoc', 'si'); }
   await radio(pg, 'salud', o.salud || 'no'); if (o.salud === 'si') await set('e_saludDet', 'Detalle salud TEST');
   await set('a_nombre', o.apo || 'Apoderado TEST'); await set('a_rut', o.rutA); await pg.press('#a_rut', 'Tab'); await set('a_edad', '40'); await set('a_dir', 'Calle Ficticia 123 TEST'); await set('a_comuna', 'Comuna TEST'); await set('a_nacionalidad', 'Chilena'); await set('a_cel', '+56 9 0000 0001'); await set('a_mail', o.mailA === undefined ? '' : o.mailA);
@@ -84,9 +84,11 @@ const textoPdf = buf => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'incos
     await enviar(pg);
     ok('formulario vacío: no avanza y muestra el aviso con los campos pendientes', (await pant(pg)) === 'scr-form' && await pg.evaluate(() => document.getElementById('bannerErr').classList.contains('show')) && (await pg.evaluate(() => document.querySelectorAll('#bannerDetalle li').length)) >= 2);
     ok('los campos obligatorios vacíos se marcan en rojo', (await pg.evaluate(() => document.querySelectorAll('#ficha .bad').length)) >= 8);
-    await llenar(pg, { tipo: 'nuevo', nombre: 'Estudiante TEST Uno', rut: '11111111-9', rutA: R2, mailA: DEST, sup: true, rutS: R3, pie: 'si', salud: 'si' });
+    await llenar(pg, { tipo: 'nuevo', nombre: 'Estudiante TEST Uno', rut: '11111111-9', rutA: R2, mailA: DEST, sup: true, rutS: R3, pie: 'si', salud: 'si', prom: '9' });
     await enviar(pg);
     ok('un RUT inválido (dígito verificador incorrecto) se rechaza', (await pant(pg)) === 'scr-form' && await pg.evaluate(() => document.getElementById('e_rut').classList.contains('bad')));
+    ok('un promedio de egreso fuera de 1,0 a 7,0 (9) se rechaza y se marca en rojo', await pg.evaluate(() => document.getElementById('e_prom8').classList.contains('bad')) && /Promedio de egreso/.test(await pg.evaluate(() => document.getElementById('bannerErr').innerText)));
+    await pg.fill('#e_prom8', '5.8');
     await pg.fill('#e_rut', R1); await pg.press('#e_rut', 'Tab');
     const banner = () => pg.evaluate(() => document.getElementById('bannerErr').innerText);
     ok('con PIE y salud declarados aparece la autorización expresa de datos de salud', await pg.isVisible('#consent_sens_wrap'));
@@ -97,6 +99,7 @@ const textoPdf = buf => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'incos
     await pg.check('#consent_sensibles'); await enviar(pg);
     ok('con todo completo y un RUT válido, genera los documentos (sin pantalla de resumen: es un solo estudiante)', (await pant(pg)) === 'scr-memos', await pant(pg));
     const txtPrint = await pg.evaluate(() => document.getElementById('printArea').innerText + document.getElementById('memosPantalla').innerText);
+    ok('la ficha de antecedentes muestra el promedio de egreso de 8° básico', /Promedio de egreso de 8° básico/.test(txtPrint) && /5,8/.test(txtPrint));
     ok('los documentos contienen los datos TEST ingresados (estudiante, apoderado y suplente)', /Estudiante TEST Uno/.test(txtPrint) && /Apoderado TEST/.test(txtPrint) && /Suplente TEST/.test(txtPrint));
     ok('hay 6 hojas de impresión (3 autorizaciones + compromiso + consentimiento de datos + ficha)', (await pg.evaluate(() => document.querySelectorAll('#printArea .print-memo').length)) === 6);
     ok('el consentimiento de datos está impreso con responsable, finalidad, derechos y la firma del apoderado', await pg.evaluate(() => { const t = document.getElementById('printArea').innerText; return ['Consentimiento para el tratamiento de datos personales', 'Responsable y finalidad', 'Veracidad', 'Mis derechos', 'Firma del apoderado(a) titular'].every(x => t.includes(x)); }));
@@ -106,6 +109,7 @@ const textoPdf = buf => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'incos
     const folioVisto = (await pg.textContent('#folioTxt')).replace(/\D/g, '');
     const fila = (await db.admin(`select * from public.matriculas where datos->'estudiante'->>'nombre'='Estudiante TEST Uno'`)).rows;
     ok('quedó guardada exactamente 1 matrícula TEST, con el folio mostrado y asociada a una solicitud', fila.length === 1 && String(fila[0].folio) === folioVisto && !!fila[0].solicitud_id);
+    ok('el promedio de egreso de 8° (escrito 5.8) se guarda normalizado como «5,8»', fila[0].datos.estudiante.promedio8 === '5,8', JSON.stringify(fila[0].datos.estudiante.promedio8));
     ok('se guardaron suplente, PIE y salud', fila[0].datos.suplente && fila[0].datos.estudiante.pie === 'si' && fila[0].datos.estudiante.salud === 'si');
     ok('el correo se envió una vez (simulado) con UN certificado a la dirección .invalid de prueba', gs.enviados.length === 1 && gs.enviados[0].to === DEST && gs.enviados[0].attachments.length === 1);
     if (hayPdftotext) { const t = textoPdf(gs.enviados[0].attachments[0].datos); ok('el PDF adjunto es válido y contiene el nombre TEST y el folio', /Estudiante TEST Uno/.test(t) && t.includes(folioVisto)); }

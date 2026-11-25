@@ -156,3 +156,8 @@ destinatarios autorizados que **nunca** acepta el proyecto de producción, y val
 ## 9. Pruebas automáticas
 
 Ver «Ejecución de las pruebas» en el [README principal](../../README.md#pruebas-automatizadas).
+
+## Promedio de egreso de 8° básico (estudiantes nuevos)
+La ficha de un estudiante **nuevo** pide, como dato **opcional**, el promedio de egreso de 8° básico (una nota de 1,0 a 7,0, con coma o punto y hasta 2 decimales; se guarda con coma).
+No aparece para estudiantes antiguos. Se muestra en el resumen, en la ficha de antecedentes impresa y en el Excel («Promedio egreso 8° básico»).
+El servidor lo valida (`supabase/migraciones/004_promedio_egreso_8vo.sql`, que hay que ejecutar **antes** de publicar la página que lo pide).

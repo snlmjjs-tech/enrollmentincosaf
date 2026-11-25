@@ -385,6 +385,15 @@ function formatearRut(r){
   const cuerpo = r.slice(0,-1), dv = r.slice(-1);
   return cuerpo.replace(/\B(?=(\d{3})+(?!\d))/g,".") + "-" + dv;
 }
+// Promedio de egreso de 8° básico: opcional; si se escribe debe ser una nota de 1,0 a 7,0 (coma o punto, hasta 2 decimales). Se guarda con coma.
+function parsePromedio(txt){
+  const t = String(txt || "").trim().replace(",", ".");
+  if (!t) return { vacio: true };
+  if (!/^\d(\.\d{1,2})?$/.test(t)) return { malo: true };
+  const n = parseFloat(t);
+  if (n < 1 || n > 7) return { malo: true };
+  return { valor: t.replace(".", ",") };
+}
 function rutValido(r){
   r = limpiarRut(r);
   if (r.length<7) return false;
@@ -406,7 +415,7 @@ function llenarDatosPrueba(){
   set("e_nombre","Prueba de Matrículas"); set("e_rut","11.111.111-1"); set("e_fnac","2012-03-15");
   set("e_dir","Calle de Prueba 393"); set("e_comuna","San Fernando"); set("e_nacionalidad","Chilena");
   set("e_cel","393893"); set("e_mail","");
-  if (tipoEstudiante==="nuevo"){ set("e_procedencia","Colegio de Prueba"); }
+  if (tipoEstudiante==="nuevo"){ set("e_procedencia","Colegio de Prueba"); set("e_prom8","5,8"); }
   else { set("e_cursoAnt","1° Medio"); set("e_letraAnt","A"); }
   ["rep","pie","salud"].forEach(g=>{ setRadio(g,"no"); toggleSub(g); });
   set("e_obs","Matrícula de prueba — borrar");
@@ -451,6 +460,7 @@ function validarEstudiante(n){
   chk("cel", "Celular", !v("cel"));
   if (tipo === "nuevo"){
     chk("procedencia", "Colegio de procedencia", !v("procedencia"));
+    chk("prom8", "Promedio de egreso de 8° (una nota de 1,0 a 7,0)", !!parsePromedio(v("prom8")).malo);
   } else if (tipo === "antiguo"){
     chk("cursoAnt", "Curso", !v("cursoAnt"));
     chk("letraAnt", "Letra del curso", !v("letraAnt"));
@@ -544,6 +554,7 @@ function leerEstudiante(n){
       comuna: v("comuna"), nacionalidad: v("nacionalidad"),
       celular: v("cel"), correo: v("mail"),
       procedencia: tipo==="nuevo" ? v("procedencia") : "",
+      promedio8: tipo==="nuevo" ? (parsePromedio(v("prom8")).valor || "") : "",
       cursoMatricula: tipo==="antiguo" ? (v("cursoAnt")+" "+v("letraAnt").toUpperCase()) : v("cursoNuevo"),
       repitencia: radio("rep"), repCurso: v("repCurso"), repAnio: v("repAnio"),
       pie: radio("pie"), pieDiagnostico: v("pieDiag"), pieDocumentacion: radio("pieDoc"),
@@ -697,6 +708,7 @@ function mostrarResumen(sol){
       el("div", { class: "resumen-fila" }, el("b", { texto: "Condición:" }), el("span", { class: "pill " + x.tipo, texto: x.tipo })),
       filaResumen("Curso 2027", E.cursoMatricula || "No indicado"),
       x.tipo === "nuevo" ? filaResumen("Colegio de procedencia", E.procedencia) : "",
+      x.tipo === "nuevo" && E.promedio8 ? filaResumen("Promedio de egreso de 8°", E.promedio8) : "",
       filaResumen("Parentesco con este estudiante", F.apoderado.parentesco),
       filaResumen("Documentos requeridos", `3 autorizaciones, compromiso del apoderado, consentimiento de datos, ficha de antecedentes y certificado PDF (se generan al continuar). ${pie}.`),
       el("div", { class: "resumen-fila" }, el("b", { texto: "Validación:" }), el("span", { class: "estado ok", texto: "✔ Campos obligatorios completos" })),
@@ -775,7 +787,7 @@ function llenarEstudiante(n, x){
   set("nombre", E.nombre); set("rut", E.rut); set("fnac", E.fnac); set("dir", E.direccion);
   set("comuna", E.comuna); set("nacionalidad", E.nacionalidad);
   set("cel", E.celular); set("mail", E.correo); set("obs", E.observaciones);
-  if (x.tipo === "nuevo"){ set("procedencia", E.procedencia); set("cursoNuevo", E.cursoMatricula); }
+  if (x.tipo === "nuevo"){ set("procedencia", E.procedencia); set("prom8", E.promedio8); set("cursoNuevo", E.cursoMatricula); }
   else {
     const curso = (E.cursoMatricula || E.cursoAnterior || "").trim();
     const partes = curso.split(" ");
@@ -926,7 +938,7 @@ function fichaAntecedentesInterior(f){
   const E = f.estudiante, A = f.apoderado, S = f.suplente;
   const cursoOProcedencia = f.tipo==="antiguo"
     ? filaDato("Curso 2027", E.cursoMatricula || E.cursoAnterior || "—")
-    : h`${filaDato("Colegio de procedencia", E.procedencia)}${E.cursoMatricula ? filaDato("Curso 2027", E.cursoMatricula) : ""}`;
+    : h`${filaDato("Colegio de procedencia", E.procedencia)}${E.promedio8 ? filaDato("Promedio de egreso de 8° básico", E.promedio8) : ""}${E.cursoMatricula ? filaDato("Curso 2027", E.cursoMatricula) : ""}`;
   return h`
     <h2 class="ficha-h2">Ficha de Antecedentes del Estudiante</h2>
     <div class="ficha-top">
@@ -1644,7 +1656,7 @@ function filasParaExcel(lista){
     "Fecha nacimiento": r.estudiante.fnac, "Dirección": r.estudiante.direccion,
     "Comuna": r.estudiante.comuna, "Nacionalidad": r.estudiante.nacionalidad,
     "Celular estudiante": r.estudiante.celular, "Correo estudiante": r.estudiante.correo,
-    "Colegio procedencia": r.estudiante.procedencia, "Curso 2027": r.estudiante.cursoMatricula || r.estudiante.cursoAnterior || "",
+    "Colegio procedencia": r.estudiante.procedencia, "Promedio egreso 8° básico": r.estudiante.promedio8 || "", "Curso 2027": r.estudiante.cursoMatricula || r.estudiante.cursoAnterior || "",
     "Repitencia": r.estudiante.repitencia, "Curso repetido": r.estudiante.repCurso, "Año repetido": r.estudiante.repAnio,
     "PIE": r.estudiante.pie, "Diagnóstico PIE": r.estudiante.pieDiagnostico, "Documentación PIE": r.estudiante.pieDocumentacion,
     "Problema de salud": r.estudiante.salud, "Detalle salud": r.estudiante.saludDetalle,

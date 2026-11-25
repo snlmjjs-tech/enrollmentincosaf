@@ -40,5 +40,6 @@ correr prueba-proteccion-produccion node tests/seguridad/prueba-proteccion-produ
 correr prueba-prototipo-cifrado   node tests/seguridad/prueba-prototipo-cifrado.js
 export PGPORT=5499; base 5499 "$ANTERIOR";  correr prueba-cifrado-sql        node tests/seguridad/prueba-cifrado-sql.js
 base 5499 "$ANTERIOR";  correr prueba-cifrado-navegador node tests/seguridad/prueba-cifrado-navegador.js
+base 5499 "$ANTERIOR";  correr prueba-promedio-sql        node tests/seguridad/prueba-promedio-sql.js
 echo; echo "=== RESUMEN (también en $RESUMEN) ==="; cat "$RESUMEN"
 ! grep -qE "[1-9][0-9]* (fallidas|pruebas fallidas)|[1-9][0-9]* fallidas" "$RESUMEN"
